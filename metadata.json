@@ -1,0 +1,8 @@
+{
+  "name": "د. عيايشية زعرة - السياحة المسؤولة",
+  "description": "المنصة الرسمية للدكتورة عيايشية زعرة، باحثة في السياحة المسؤولة والتنمية المستدامة. تعرض أعمالها، مقالاتها، وسيرتها الذاتية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

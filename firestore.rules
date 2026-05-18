@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Functions
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.email == 'dalinadjib1990@gmail.com'; }
+    
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- Entity Validations ---
+
+    function isValidArticle(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.content is string && data.content.size() <= 50000 &&
+             data.createdAt is timestamp &&
+             (data.get('category', '') is string) &&
+             (data.get('likes', 0) is number);
+    }
+
+    function isValidComment(data) {
+      return data.userName is string && data.userName.size() <= 100 &&
+             data.content is string && data.content.size() <= 1000 &&
+             data.createdAt is timestamp &&
+             data.articleId is string;
+    }
+
+    function isValidWork(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 2000 &&
+             (data.get('rating', 0) is number) &&
+             (data.get('ratingCount', 0) is number);
+    }
+
+    function isValidMessage(data) {
+      return data.senderName is string && data.senderName.size() <= 100 &&
+             data.senderEmail is string && data.senderEmail.size() <= 100 &&
+             data.message is string && data.message.size() <= 2000 &&
+             data.createdAt is timestamp &&
+             data.replied == false; // Initial messages must not be pre-replied
+    }
+
+    // --- Match Rules ---
+    
+    // Stats
+    match /stats/{statId} {
+      allow read: if true;
+      allow update: if statId == 'global' && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['visitors']) &&
+                    incoming().visitors == (existing().get('visitors', 0) + 1);
+      allow create: if statId == 'global' && 
+                    incoming().keys().hasAll(['visitors']) && 
+                    incoming().keys().size() == 1 &&
+                    incoming().visitors == 1;
+      allow write: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Profiles
+    match /profiles/main {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Articles
+    match /articles/{articleId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isAdmin() && isValidArticle(incoming());
+      allow update: if (isAdmin() && isValidArticle(incoming())) ||
+                    (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['likes']));
+      allow delete: if isAdmin();
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow list: if true;
+        allow create: if isValidComment(incoming()) && incoming().createdAt == request.time;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Works
+    match /works/{workId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isAdmin() && isValidWork(incoming());
+      allow update: if (isAdmin() && isValidWork(incoming())) ||
+                    (incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'ratingCount']));
+      allow delete: if isAdmin();
+    }
+
+    // Messages
+    match /messages/{messageId} {
+      allow create: if isValidMessage(incoming()) && incoming().createdAt == request.time;
+      allow get, list: if isAdmin();
+      allow update: if isAdmin() && incoming().replied == true;
+      allow delete: if isAdmin();
+    }
+
+    // Live Chat
+    match /live_chat/{chatId} {
+      allow create: if true;
+      allow read, list: if true; // In production, refine to only allow users to see their own chats
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "PhD Student Profile",
+      "description": "Public profile including CV and bio",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "bio": { "type": "string" },
+        "cvUrl": { "type": "string" },
+        "email": { "type": "string" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "visitors": { "type": "number" },
+            "totalLikes": { "type": "number" }
+          }
+        }
+      },
+      "required": ["name", "title"]
+    },
+    "Article": {
+      "title": "Article",
+      "description": "Educational or research blog post",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "authorId": { "type": "string" },
+        "likes": { "type": "number" }
+      },
+      "required": ["title", "content", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Comment on an article",
+      "type": "object",
+      "properties": {
+        "articleId": { "type": "string" },
+        "userName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["articleId", "userName", "content", "createdAt"]
+    },
+    "Work": {
+      "title": "Research Work",
+      "description": "Projects or publications",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "externalUrl": { "type": "string" },
+        "rating": { "type": "number" },
+        "ratingCount": { "type": "number" },
+        "category": { "type": "string" }
+      },
+      "required": ["title", "description"]
+    },
+    "Message": {
+      "title": "Visitor Message",
+      "description": "Message sent from contact form",
+      "type": "object",
+      "properties": {
+        "senderName": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "replied": { "type": "boolean" },
+        "replyContent": { "type": "string" }
+      },
+      "required": ["senderName", "senderEmail", "message", "createdAt"]
+    }
+  },
+  "firestore": {
+    "profiles/main": {
+      "schema": "Profile",
+      "description": "Main profile document"
+    },
+    "articles/{articleId}": {
+      "schema": "Article",
+      "description": "Collection of blog articles"
+    },
+    "articles/{articleId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments for a specific article"
+    },
+    "works/{workId}": {
+      "schema": "Work",
+      "description": "Collection of research works"
+    },
+    "messages/{messageId}": {
+      "schema": "Message",
+      "description": "Visitor inquiries"
+    }
+  }
+}
