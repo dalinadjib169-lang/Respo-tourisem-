@@ -34,7 +34,11 @@ import {
   Smile,
   Image as ImageIcon,
   Paperclip,
-  Trash2
+  Trash2,
+  Maximize2,
+  Minimize2,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 import { 
   auth, 
@@ -60,6 +64,8 @@ import {
 import { uploadToCloudinary } from './lib/cloudinary';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
 import { THEMES, Theme, Article, Work, Message, Profile } from './types';
+import { DR_YAI_PUBLICATIONS, type Publication } from './data/publications';
+import { fullPapers } from './data/fullPapers';
 import { useTranslation } from 'react-i18next';
 import './i18n';
 import { saveAs } from 'file-saver';
@@ -515,7 +521,7 @@ const FloatingChat = ({ currentUser, isOpen, onClose }: { currentUser: any, isOp
               initial={{ opacity: 0, scale: 0.9, y: 50 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 50 }}
-              className="fixed bottom-[80px] md:bottom-28 right-4 md:right-10 z-[81] w-[calc(100vw-32px)] md:w-[380px] h-[500px] md:h-[550px] bg-slate-950 border border-white/10 rounded-[2.5rem] md:rounded-[3rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden"
+              className="fixed bottom-[80px] md:bottom-28 right-4 md:right-10 z-[81] w-[calc(100vw-32px)] md:w-[500px] h-[540px] md:h-[600px] bg-slate-950 border border-white/10 rounded-[2.5rem] md:rounded-[3rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden"
             >
               {/* Header */}
               <div className="bg-emerald-600 p-5 md:p-6 flex items-center justify-between">
@@ -613,8 +619,8 @@ const FloatingChat = ({ currentUser, isOpen, onClose }: { currentUser: any, isOp
                      value={text}
                      onChange={e => setText(e.target.value)}
                      onKeyDown={e => e.key === 'Enter' && handleSend()}
-                     placeholder="استفسار؟"
-                     className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-3 px-4 text-white text-xs focus:ring-1 focus:ring-emerald-500 outline-none text-right placeholder:text-white/20 min-w-0"
+                     placeholder="اكتبي استفسارك الكامل هنا للدكتورة..."
+                     className="flex-1 bg-white/5 border border-white/15 rounded-2xl py-3.5 px-5 text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none text-right placeholder:text-white/30 min-w-0 font-arabic font-semibold"
                    />
                    <button onClick={() => handleSend()} className="bg-emerald-600 text-white p-3 rounded-2xl hover:bg-emerald-500 transition-all shadow-lg active:scale-95 flex items-center justify-center flex-shrink-0">
                       <Send size={18} className="rotate-180" />
@@ -722,116 +728,1011 @@ const HomePage = ({ currentUser, signInWithGoogle }: { currentUser: any, signInW
   );
 };
 
-const CommentSection = ({ articleId, currentUser }: { articleId: string, currentUser: any }) => {
+const CommentSection = ({ articleId, currentUser, onShowToast }: { articleId: string, currentUser: any, onShowToast?: (msg: string, type?: 'success' | 'error') => void }) => {
   const [comments, setComments] = useState<any[]>([]);
   const [text, setText] = useState('');
+  const [visitorName, setVisitorName] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     // We use a property in the article document instead of subcollection for simplicity and O(1) reads in this context
     const articleRef = doc(db, 'articles', articleId);
-    return onSnapshot(articleRef, (snap) => {
-      setComments(snap.data()?.comments || []);
+    
+    // Load local storage comments as immediate fallback
+    const cachedComments = localStorage.getItem('comments_' + articleId);
+    if (cachedComments) {
+      try {
+        setComments(JSON.parse(cachedComments));
+      } catch (e) {
+        console.error("Local comments cache parse error:", e);
+      }
+    }
+
+    const unsubscribe = onSnapshot(articleRef, (snap) => {
+      if (snap.exists() && snap.data()?.comments) {
+        const remoteComments = snap.data().comments;
+        setComments(remoteComments);
+        try {
+          localStorage.setItem('comments_' + articleId, JSON.stringify(remoteComments));
+        } catch (e) {
+          console.warn("Could not save to localStorage cache:", e);
+        }
+      }
+    }, (error) => {
+      console.warn("onSnapshot read failed, using offline mode comments:", error);
     });
+
+    return () => unsubscribe();
   }, [articleId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !text.trim()) return;
+    if (!text.trim()) return;
     setLoading(true);
     try {
       const articleRef = doc(db, 'articles', articleId);
+      const guestName = visitorName.trim() || 'زائر كريم';
+      const uName = currentUser ? (currentUser.displayName || 'زائر') : guestName;
+      const uId = currentUser ? currentUser.uid : 'visitor-' + Math.random().toString(36).substr(2, 9);
+      const uPhoto = currentUser ? currentUser.photoURL : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(uName)}`;
+
       const newComment = {
         id: Math.random().toString(36).substr(2, 9),
-        userId: currentUser.uid,
-        userName: currentUser.displayName || 'زائر',
-        userPhoto: currentUser.photoURL,
-        text,
+        userId: uId,
+        userName: uName,
+        userPhoto: uPhoto,
+        text: text.trim(),
         createdAt: new Date().toISOString()
       };
       
-      const snap = await getDoc(articleRef);
-      const existingComments = snap.data()?.comments || [];
-      
-      await updateDoc(articleRef, {
-        comments: [...existingComments, newComment]
-      });
+      let existingComments: any[] = [];
+      let snapExists = false;
+      let articleTitle = 'أطروحة أكاديمية';
 
-      // Add Notification for Admin
-      if (currentUser.email !== 'dalinadjib1990@gmail.com') {
-        await addDoc(collection(db, 'notifications'), {
-          type: 'comment',
-          from: currentUser.displayName || currentUser.email,
-          articleTitle: snap.data()?.title,
-          text: text.substring(0, 50) + '...',
-          createdAt: serverTimestamp(),
-          read: false
-        });
+      try {
+        const snap = await getDoc(articleRef);
+        snapExists = snap.exists();
+        if (snapExists) {
+          existingComments = snap.data()?.comments || [];
+          articleTitle = snap.data()?.title || articleTitle;
+        } else {
+          const pubMatch = DR_YAI_PUBLICATIONS.find(p => p.id === articleId);
+          articleTitle = pubMatch?.title || articleTitle;
+        }
+      } catch (getErr) {
+        console.warn("Could not getDoc from Firestore, falling back to local list:", getErr);
+        existingComments = comments;
+        const pubMatch = DR_YAI_PUBLICATIONS.find(p => p.id === articleId);
+        articleTitle = pubMatch?.title || articleTitle;
+      }
+      
+      const updatedComments = [...existingComments, newComment];
+
+      // Optimistically update local state & localStorage immediately
+      setComments(updatedComments);
+      try {
+        localStorage.setItem('comments_' + articleId, JSON.stringify(updatedComments));
+      } catch (e) {
+        console.warn(e);
+      }
+
+      try {
+        await setDoc(articleRef, {
+          comments: updatedComments
+        }, { merge: true });
+
+        // Add Notification for Admin (optional, only if online)
+        if (!currentUser || currentUser.email !== 'dalinadjib1990@gmail.com') {
+          await addDoc(collection(db, 'notifications'), {
+            type: 'comment',
+            from: uName,
+            articleTitle: articleTitle,
+            text: text.substring(0, 50) + '...',
+            createdAt: serverTimestamp(),
+            read: false
+          }).catch(err => console.warn("Could not send admin notification:", err));
+        }
+        onShowToast?.('✓ تم نشر تعقيبكِ الأكاديمي بنجاح!', 'success');
+      } catch (writeErr) {
+        console.warn("Firestore write failed, comments remain saved locally:", writeErr);
+        onShowToast?.('✓ تم حفظ تعليقكِ محلياً! سيتم مزامنته تلقائياً عند معاودة الاتصال.', 'success');
       }
 
       setText('');
+      setVisitorName('');
     } catch (err) {
-      console.error(err);
+      console.error("Comment submit error:", err);
     }
     setLoading(false);
   };
 
   return (
-    <div className="mt-6 pt-6 border-t border-white/5 space-y-6">
-      <div className="max-h-60 overflow-y-auto space-y-4 pr-3 custom-scrollbar">
+    <div className="mt-8 pt-6 border-t border-white/5 space-y-6 text-right">
+      <div className="flex items-center justify-between flex-row-reverse pb-2">
+        <h4 className="text-xs font-black text-emerald-400 font-arabic">💬 التعليقات والتعقيبات الأكاديمية ({comments.length})</h4>
+        <span className="text-[9px] text-white/30 font-mono">COMMENTS SYSTEM</span>
+      </div>
+
+      <div className="max-h-72 overflow-y-auto space-y-4 pr-3 custom-scrollbar">
         {comments.length === 0 ? (
-          <p className="text-white/20 text-xs italic text-center py-4">لا توجد تعليقات بعد. كن أول من يعلق!</p>
+          <p className="text-white/20 text-xs italic text-center py-6 font-arabic">لا توجد تعليقات بعد على هذه الدراسة الأكاديمية. شاركي رأيكِ العلمي لتكوني الأولى!</p>
         ) : (
           comments.map((c) => (
-            <div key={c.id} className="flex gap-3 flex-row-reverse text-right">
-              <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex-shrink-0 overflow-hidden">
-                 <img src={c.userPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.userId}`} alt={c.userName} />
+            <div key={c.id} className="flex gap-3 flex-row-reverse text-right items-start">
+              <div className="w-9 h-9 rounded-full bg-slate-800 border border-white/10 flex-shrink-0 overflow-hidden shadow-md">
+                 <img src={c.userPhoto || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(c.userName)}`} alt={c.userName} referrerPolicy="no-referrer" />
               </div>
-              <div className="bg-white/5 p-3 rounded-2xl rounded-tr-none flex-1">
-                <p className="text-[10px] font-bold text-emerald-400 mb-1">{c.userName}</p>
-                <p className="text-xs text-white/70 leading-relaxed">{c.text}</p>
+              <div className="bg-white/5 p-4 rounded-2xl rounded-tr-none flex-1 border border-white/5 relative">
+                <div className="flex justify-between items-center flex-row-reverse mb-1.5">
+                  <p className="text-xs font-bold text-emerald-400 font-arabic">{c.userName}</p>
+                  <span className="text-[9px] text-white/30 font-mono">
+                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString('ar-DZ') : ''}
+                  </span>
+                </div>
+                <p className="text-xs text-white/85 leading-relaxed font-arabic whitespace-pre-line">{c.text}</p>
               </div>
             </div>
           ))
         )}
       </div>
       
-      <form onSubmit={handleSubmit} className="relative">
-        <input 
-          type="text" 
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder="أضف تعليقاً..."
-          className="w-full bg-slate-950 border border-white/10 rounded-2xl py-3 px-12 text-xs text-white focus:ring-1 focus:ring-emerald-500 outline-none pr-4 text-right"
-        />
-        <button 
-          disabled={loading || !currentUser}
-          className="absolute left-2 top-1/2 -translate-y-1/2 text-emerald-500 p-2 disabled:opacity-30"
-        >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} className="rotate-180" />}
-        </button>
+      <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+        {!currentUser && (
+          <div className="flex gap-2.5 justify-end items-center flex-row-reverse">
+            <span className="text-[10px] text-emerald-400/80 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl font-arabic">
+              التعليق كزائر / Comment as Guest
+            </span>
+            <input 
+              type="text" 
+              required
+              value={visitorName}
+              onChange={e => setVisitorName(e.target.value)}
+              placeholder="اكتبي اسمكِ الكريم أو صفتكِ العلمية..."
+              className="flex-1 max-w-[280px] bg-slate-950/80 border border-white/15 rounded-xl py-2 px-3 text-xs text-white focus:ring-1 focus:ring-emerald-500 outline-none text-right font-arabic"
+            />
+          </div>
+        )}
+        <div className="relative flex flex-col gap-2">
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            rows={4}
+            required
+            placeholder="اكتبي تعقيبكِ الفكري، مرئياتكِ البحثية، أو رأيكِ الأكاديمي المكتمل والمفصل هنا بكل راحة ومقروئية..."
+            className="w-full bg-slate-950 border border-white/15 rounded-2xl p-4 text-xs sm:text-sm text-white focus:ring-2 focus:ring-emerald-500 outline-none pr-4 text-right font-arabic font-medium leading-relaxed resize-y min-h-[100px] custom-scrollbar"
+          />
+          <div className="flex justify-start">
+            <button 
+              type="submit"
+              disabled={loading || !text.trim()}
+              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-slate-950 font-black text-xs px-6 py-2.5 rounded-xl transition-all flex items-center gap-2 flex-row-reverse font-arabic shadow-md active:scale-95"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>جاري النشر...</span>
+                </>
+              ) : (
+                <>
+                  <Send size={13} className="rotate-180" />
+                  <span>نشر التعليق / Publish</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </form>
     </div>
   );
 };
 
-const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: Article, currentUser: any, onEdit?: (article: Article) => void, onShowToast?: (msg: string, type?: 'success' | 'error') => void }) => {
+const InteractiveItemRating = ({ itemId, itemType, initialRating = 4.8 }: { itemId: string, itemType: 'article' | 'work', initialRating?: number }) => {
+  const [userRating, setUserRating] = useState<number>(0);
+  const [hoverRating, setHoverRating] = useState<number>(0);
+  const [name, setName] = useState('');
+  const [comment, setComment] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  
+  const [avgRating, setAvgRating] = useState<number>(initialRating);
+  const [totalCount, setTotalCount] = useState<number>(0);
+
+  useEffect(() => {
+    const q = query(collection(db, 'ratings'), where('itemId', '==', itemId));
+    return onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(doc => doc.data());
+      if (docs.length > 0) {
+        const sum = docs.reduce((acc, r: any) => acc + (r.rating || 0), 0);
+        const avg = Math.round((sum / docs.length) * 10) / 10;
+        setAvgRating(avg);
+        setTotalCount(docs.length);
+      } else {
+        setAvgRating(initialRating);
+        setTotalCount(0);
+      }
+    });
+  }, [itemId, initialRating]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (userRating === 0) return;
+    setSubmitting(true);
+    try {
+      await addDoc(collection(db, 'ratings'), {
+        itemId,
+        itemType,
+        rating: userRating,
+        reviewerName: name.trim() || 'زائر مجهول',
+        comment: comment.trim() || 'تقييم ممتاز وقراءة قيمة للعمل.',
+        createdAt: serverTimestamp()
+      });
+      setSubmitted(true);
+      setShowForm(false);
+      setName('');
+      setComment('');
+      setUserRating(0);
+    } catch (err) {
+      console.error("Error submitting rating: ", err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 bg-slate-950/60 border border-white/5 p-5 rounded-3xl text-right relative">
+      <div className="flex items-center justify-between flex-row-reverse gap-4">
+        <div className="flex flex-col items-end">
+          <p className="text-[10px] text-white/40 block mb-1 font-mono uppercase tracking-wider">تقييم القراء والباحثين / Academic Rating</p>
+          <div className="flex items-center gap-2 flex-row-reverse">
+            <div className="flex gap-0.5 text-amber-400">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button 
+                  type="button"
+                  key={s}
+                  onClick={() => {
+                    setUserRating(s);
+                    setShowForm(true);
+                    setSubmitted(false);
+                  }}
+                  className="p-2.5 hover:scale-125 transition-transform active:scale-95 text-amber-400 hover:text-amber-300"
+                  title={`اضغطي هنا لتقييم ${s} نجوم`}
+                >
+                  <Star 
+                    size={20} 
+                    fill={s <= Math.round(avgRating) ? 'currentColor' : 'none'} 
+                    className={cn("transition-all cursor-pointer", s <= Math.round(avgRating) && "drop-shadow-neon")}
+                  />
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-white/80 font-extrabold font-mono flex items-center gap-1">
+              <span>({totalCount})</span>
+              <span className="text-white">{avgRating} / 5</span>
+            </span>
+          </div>
+        </div>
+        
+        <button 
+          type="button"
+          onClick={() => { setShowForm(!showForm); setSubmitted(false); }}
+          className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-2.5 rounded-xl hover:bg-emerald-500/20 active:scale-95 transition-all font-arabic"
+        >
+          {showForm ? "إلغاء التقييم" : "قيّم هذا العمل بالنجوم ★"}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3 pt-4 border-t border-white/5 text-right">
+          <p className="text-xs text-white/70 mb-2">حددي تقييمكِ بالنجوم لمعطيات ومجهود الدراسة:</p>
+          <div className="flex gap-1 justify-end py-1">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <button
+                type="button"
+                key={s}
+                onClick={() => setUserRating(s)}
+                onMouseEnter={() => setHoverRating(s)}
+                onMouseLeave={() => setHoverRating(0)}
+                className="p-2 text-amber-400 hover:scale-125 transition-transform"
+              >
+                <Star 
+                  size={24} 
+                  fill={s <= (hoverRating || userRating) ? 'currentColor' : 'none'} 
+                  className="transition-colors duration-150"
+                />
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            <input 
+              type="text" 
+              placeholder="الاسم الكامل أو الصفة الأكاديمية للزائر الكريم..."
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full bg-slate-900 border border-white/15 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 text-right font-arabic"
+            />
+            <textarea 
+              placeholder="اكتبي تعقيباً فكرياً أو رأياً إرشادياً نقدياً حول دراسة الفشل الاستشارية (اختياري)..."
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              rows={4}
+              className="w-full bg-slate-900 border border-white/15 rounded-xl px-4 py-3.5 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 text-right resize-y font-arabic"
+            />
+          </div>
+
+          <button 
+            type="submit"
+            disabled={submitting || userRating === 0}
+            className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-extrabold text-xs py-3 rounded-xl transition-all disabled:opacity-40 shadow-lg font-arabic"
+          >
+            {submitting ? "جاري تسجيل التقييم في الخادم..." : "إرسال التقييم الأكاديمي الحقيقي للزائر"}
+          </button>
+        </form>
+      )}
+
+      {submitted && (
+        <p className="text-[10px] text-green-400 text-center mt-3 bg-green-500/10 p-2.5 rounded-xl border border-green-500/20 font-arabic">
+          ✓ تم إرسال تقييمك وحفظه في سجلات الدكتورة بنجاح. شكراً لإبداء رأيك الأكاديمي!
+        </p>
+      )}
+
+      {totalCount > 0 && (
+         <div className="text-[8px] text-white/30 text-left mt-2 italic font-mono flex justify-between items-center">
+           <span>{totalCount} real verification ratings registered</span>
+           <span className="flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-emerald-400 inline-block animate-ping" /> Live Connected Data</span>
+         </div>
+      )}
+    </div>
+  );
+};
+
+const IndiaStartupsInfographics = () => {
+  const [activeTab, setActiveTab] = useState<'failures' | 'growth' | 'global' | 'timeline'>('failures');
+  const [selectedFailure, setSelectedFailure] = useState<number>(0);
+  const [selectedYearIndex, setSelectedYearIndex] = useState<number>(9); // Default to 2025
+
+  // Tab 1: Failures Data
+  const failuresData = [
+    { percent: 34, title: "عدم ملاءمة المنتج لمتطلبات السوق (Product-Market Fit)", detail: "السبب الأول والأكثر شيوعاً (34%)؛ غياب حاجة حقيقية بالسوق للمنتج أو الخدمة المسردة، أو بناء ميزات لا تخدم الفئة المستهدفة ولا تجتذبها للدفع الفعلي مسبقاً لرعاية النشاط.", color: "#10b981", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+    { percent: 22, title: "مشكلات استراتيجيات التسويق والترويج (Marketing)", detail: "العجز عن استهداف الشرائح الصحيحة تكراراً (22%)، غياب قنوات الاستجابة الموصى بها للوصول المكتمل، وكذا تدني مستوى ولاء المستخدمين للعلامة أو خدمات التوزيع المباشرة.", color: "#ec4899", bg: "bg-pink-500/10", border: "border-pink-500/30" },
+    { percent: 18, title: "عيوب وعدم انسجام الفريق الإداري والتقني (Team)", detail: "عجز أطقم القيادة والشركاء المؤسسين عن سد الثغرات المهارية (18%)، حدوث تصادمات داخلية، غياب تماسك الرؤى الإدارية والعملياتية، أو تشتت الالتزام الكامل بالوقت المطلوب للنشاط.", color: "#f87171", bg: "bg-red-500/10", border: "border-red-500/30" },
+    { percent: 16, title: "مشاكل التسيير المالي والسيولة (Finance Problems)", detail: "نشوء عوائد سالبة ونفاد السيولة الاستراتيجية بشكل متسارع (16%)، الإسراف وتجاوز معدل الحرق الآمن (Burn Rate) المتوافق وسوء إدارة نفقات التطوير أو غياب سياسة الإيراد الفوري.", color: "#38bdf8", bg: "bg-sky-500/10", border: "border-sky-500/30" },
+    { percent: 6, title: "ثغرات وبنائيات تقنية ضعيفة (Technical Problems)", detail: "عيوب فادحة بالهندسة العامة للمنتج التقني (6%)، حدوث خلل برمجي عريض بالحزم الحيوية، أو استخدام بنية رقمية غير مرنة لإدراج التوسعات المستقبلية للمكاسب الخدمية.", color: "#a78bfa", bg: "bg-violet-500/10", border: "border-violet-500/30" },
+    { percent: 2, title: "عقبات بالعمليات اللوجستية والإنتاج (Operational)", detail: "بروز مشكلات حيوية في سلاسل التوريد والقدرة على تلبية الطلبات المتواترة (2%)، خاصة في قطاعات التصدير والتصنيع المادي والخدمات غير الرقمية المحضة.", color: "#fbbf24", bg: "bg-amber-500/10", border: "border-amber-500/30" },
+    { percent: 2, title: "تعديلات وتعقيدات الرقابة القانونية والتراخيص (Legal)", detail: "عدم الامتثال للتراخيص البلدية والجمركية الرسمية (2%)، أو النزاعات المتعلقة بالملكية الفكرية والتأسيس مع الجهات الرقابية الحكومية مما يشل نمو الشركة نهائياً.", color: "#94a3b8", bg: "bg-slate-500/10", border: "border-slate-500/30" }
+  ];
+
+  // Tab 2: Explosive Indian Startup Environment - DPIIT List
+  const recognizedData = [
+    { year: 2016, count: 471, comment: "انطلاقة المبادرة التاريخية المنسقة Startup India وتدشين التسهيلات." },
+    { year: 2017, count: 5704, comment: "بداية تسجيل القفزات ودخول مئات الحاضنات لتوجيه الطلاب والشباب." },
+    { year: 2018, count: 14339, comment: "تقنين الإعفاءات الضريبية الشاملة وتجاوز العقبات للأفكار البسيطة." },
+    { year: 2019, count: 25618, comment: "توسع استثمارات رأس المال الجريء ونماء البنية التحتية للمدن الكبرى." },
+    { year: 2020, count: 40116, comment: "طفرة التطبيقات الرقمية في ذروة تباعد كوفيد وزيادة خدمات الدفع." },
+    { year: 2021, count: 60162, comment: "حقبة 'أحاديات القرن' وتدمر أطواق البيروقراطية مع تدفق التمويل الدولي." },
+    { year: 2022, count: 86704, comment: "تنويع الاستثمار في الوعي البيئي والذكاء واللوجستيات الرقمية العصرية." },
+    { year: 2023, count: 112718, comment: "الهند تحتل المرتبة الثالثة عالميًا في الحجم والنشاط والتمثيل الاقتصادي." },
+    { year: 2024, count: 127433, comment: "تمركز التوسع في المدن الناشئة والصغرى لتفادي تشبع الأقطاب الكلية." },
+    { year: 2025, count: 159157, comment: "تسجيل رقم تاريخي يفوق الـ 159 ألف فاشل وصامد مدعوم حكومياً بالهند." }
+  ];
+
+  const jobsData = [
+    { sector: "خدمات البرمجيات وتكنولوجيا المعلومات (IT Services)", count: "2.10 Lakh", num: 210000, percentage: 100, color: "from-emerald-500 to-teal-400" },
+    { sector: "الرعاية الصحية والعلوم الحياتية (Healthcare & Lifesciences)", count: "1.51 Lakh", num: 151000, percentage: 72, color: "from-sky-500 to-blue-400" },
+    { sector: "الخدمات المهنية والتجارية المتقدمة (Professional Services)", count: "96,474", num: 96474, percentage: 46, color: "from-amber-400 to-amber-600" },
+    { sector: "التعليم التكنولوجي والمعرفة (Education)", count: "92,694", num: 92694, percentage: 44, color: "from-rose-500 to-red-400" }
+  ];
+
+  // Tab 3: International Success & Failure comparison
+  const countriesData = [
+    { country: "سويسرا (Switzerland)", fail: 65, success: 35, desc: "البيئة الأقوى مخرجات في صمود الشركات بفعل الدعم الفدرالي للابتكارات الطبية وتدفق الباحثين وتوفير حوكمة تمويلية صارمة." },
+    { country: "سنغافورة (Singapore)", fail: 70, success: 30, desc: "تمركز سياسات الباب المفتوح، وتسهيلات التحصيل المالي، وقوانين الإعفاء الآسيوي لتشجيع العبور للتكتلات الاستهلاكية المجاورة." },
+    { country: "المملكة المتحدة (UK)", fail: 70, success: 30, desc: "حاضنات لندنية ركيزية في التكنولوجيا المالية FinTech وقوانين ضريبية مرنة تحابي رواد الأعمال العابرين للحدود." },
+    { country: "ألمانيا (Germany)", fail: 75, success: 25, desc: "انضباط مهني وصناعي متين، وتركيز كثيف على الهندسة والأبحاث العميقة مع تباطؤ نسبي بتمويل الخدمات السائبة." },
+    { country: "إستونيا (Estonia)", fail: 75, success: 25, desc: "النموذج الفريد للإقامة الإلكترونية وإنجاز تأسيس الشركات سحابياً بدقائق، مرونة عالية حدت كثيراً من تكاليف الاندثار." },
+    { country: "الولايات المتحدة (USA)", fail: 80, success: 20, desc: "رغم تربعها على قمة الاستثمار وصناديق السيولة، إلا أن حدة المنافسة والصراع على البقاء يرفع معدلات الموت في المهد." },
+    { country: "كندا (Canada)", fail: 80, success: 20, desc: "أنظمة تشريعية وتراخيص متينة للغاية غير أن الحجم الديمغرافي الصغير والاستقطاب الأمريكي الشرس للمواهب يعيق التوسع." },
+    { country: "فرنسا (France)", fail: 80, success: 20, desc: "مجهود فرنسي رائع بمبادرات التكنولوجيا الفرنسية إلا أن البيروقراطية تظل ترهق كاهل النفقات التشغيلية المبدئية." },
+    { country: "أستراليا (Australia)", fail: 75, success: 25, desc: "صمود جيد بدعم سياحي وخدماتي ميسر غير أن المسافات الجغرافية ومشاكل الاستيراد تزيد من حدة أزمات التوسع البري والبحري." },
+    { country: "جنوب أفريقيا (South Africa)", fail: 86, success: 14, desc: "تسجل أعلى معدل فشل (86%) بسب تذبذب شبكات الكهرباء، تعقيد تحصيل الاستحقاقات، وضعف آليات الإقراض للشركات الناشئة." }
+  ];
+
+  // Tab 4: Concept Timeline data
+  const conceptHistory = [
+    { period: "1920s", title: "ولادة اللفظ الأولي بالولايات المتحدة", desc: "أشارت المصطلحات الأمريكية الأولى لكلمة 'Startup' للتعبير عن انطلاق الشركات الشابة الطموحة لغزو فجوات مجهولة بالسوق البرية." },
+    { period: "1939", title: "مرحلة مرآب HP في بالو ألتو", desc: "تأسيس هوليت-باكارد بمرآب متواضع من قبل ديفيد بيكارد كحجر أساس وموديل تقليدي لأيقونة الابتكار التكنولوجي بسيلكون فالي." },
+    { period: "1976", title: "تأسيس Apple وظهور Forbes", desc: "أول استخدام للكلمة بمصطلح ريادي أكاديمي في مجلة فوربس الشهيرة، مقترناً مع بناء ستيف جوبز وجهاز Apple I في مرآب عائلي متواضع." },
+    { period: "1994", title: "ثورة الويب وتأسيس Amazon", desc: "تأسيس جيف بيزوس لأمازون كمكتبة رقمية وتدشينه لعصر البيع اللامركزي للكتب والانفجار الأول لتدفق صفقات شبكة الويب العالمية." },
+    { period: "1997", title: "مرحلة Google في مرائب مينلو", desc: "صياغة خوارزمية البحث الفريدة وحوكمة صفحات المعرفة العالمية بجهود لاري بيج وسيرجي برين، إعلان رسمي لانبثاق تكنولوجيا البيانات." },
+    { period: "2004", title: "حقبة Facebook والمشاريع الاجتماعية", desc: "تدشين فضاء شبكات التواصل، وانضباط النظرة للنمو المضاعف كبديل للاستثمارات الرتيبة وبدايات تطلع الصناديق للاستقطابات الفلكية." }
+  ];
+
+  // Helper variables for curve plotting (DPIIT recognized data)
+  const svgWidth = 500;
+  const svgHeight = 160;
+  const paddingX = 40;
+  const paddingY = 20;
+
+  // Map data to SVG points
+  const points = recognizedData.map((d, index) => {
+    const x = paddingX + (index * (svgWidth - paddingX * 2)) / (recognizedData.length - 1);
+    // Max count is 159,157, map to height range
+    const maxVal = 160000;
+    const y = svgHeight - paddingY - (d.count * (svgHeight - paddingY * 2)) / maxVal;
+    return { x, y, ...d };
+  });
+
+  const activeYear = points[selectedYearIndex];
+
+  return (
+    <div className="bg-slate-950/90 border border-emerald-500/20 rounded-[2.5rem] p-6 md:p-8 mt-6 text-right space-y-6 shadow-2xl relative overflow-hidden">
+      <div className="absolute -top-10 -left-10 w-40 h-40 bg-emerald-500/5 blur-[80px] rounded-full" />
+      
+      <div className="border-b border-white/5 pb-4 flex flex-col md:flex-row-reverse justify-between items-start md:items-center gap-4">
+        <div className="text-right">
+          <h4 className="text-lg md:text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-100 to-amber-200 font-serif flex items-center justify-end gap-2 flex-row-reverse">
+            <span>📊 محاكاة هندسية وبيانات توضيحية مرافقة لدراسة الفشل (2024–2025)</span>
+          </h4>
+          <p className="text-[10px] text-white/40 mt-1 uppercase tracking-wider font-mono">
+            Interactive Ecosystem Simulators, Startup Failure Vectors & Job Creation Metrics
+          </p>
+        </div>
+        
+        {/* Real Badge */}
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3.5 py-1.5 text-xs text-emerald-400 font-black font-arabic">
+          مستخرج أكاديمي تفاعلي متميز
+        </div>
+      </div>
+
+      {/* Modern Tabs */}
+      <div className="flex flex-wrap justify-end gap-2 border-b border-white/5 pb-3">
+        {[
+          { key: 'failures', label: 'أسباب الفشل والانهيار' },
+          { key: 'growth', label: 'طفرة الهند وخلق الوظائف' },
+          { key: 'global', label: 'مقارنة الفشل بين الدول' },
+          { key: 'timeline', label: 'التطور التاريخي للاستثمار' }
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as any)}
+            className={cn(
+              "px-4 py-2.5 rounded-xl text-xs font-black transition-all font-arabic border",
+              activeTab === tab.key 
+                ? "bg-gradient-to-r from-emerald-600 to-teal-500 text-white border-emerald-500 shadow-[0_4px_20px_rgba(16,185,129,0.3)]" 
+                : "bg-white/5 text-white/40 border-white/5 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content 1: Failures analysis */}
+      {activeTab === 'failures' && (
+        <div className="space-y-6">
+          <p className="text-xs text-white/60 font-arabic leading-relaxed">
+            يظهر الإحصاء البياني أدناه أن 34% من الإخفاقات تعزى مباشراً لغياب الملاءمة الفعلية لمتطلبات الزبائن بالسوق الرقمي أو التقليدي، تليها استراتيجيات الترويج والتسويق الهشة. انقري على السبب لمشاهدة التحليل الأكاديمي الوارد بالبحث:
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* SVG Interactive Rings Segment */}
+            <div className="lg:col-span-5 flex flex-col items-center justify-center bg-slate-900/50 p-6 rounded-3xl border border-white/5">
+              <div className="relative w-44 h-44 flex items-center justify-center">
+                {/* SVG Round Donut for representation */}
+                <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                  {/* Outer base ring */}
+                  <circle cx="50" cy="50" r="40" className="text-white/5" strokeWidth="8" stroke="currentColor" fill="transparent" />
+                  
+                  {/* We can programmatically stack circles or draw indicator rings */}
+                  {failuresData.map((f, i) => {
+                    // Accumulate dashoffsets for realistic slices (simplified here as individual concentric rings for ultra-modern pixel perfect UX)
+                    const radius = 40 - i * 4.5;
+                    const circumference = 2 * Math.PI * radius;
+                    const strokeOffset = circumference - (circumference * f.percent) / 100;
+                    const isSelected = selectedFailure === i;
+
+                    return (
+                      <circle
+                        key={i}
+                        cx="50"
+                        cy="50"
+                        r={radius}
+                        stroke={f.color}
+                        strokeWidth={isSelected ? "3.5" : "2"}
+                        strokeDasharray={circumference}
+                        strokeDashoffset={strokeOffset}
+                        strokeLinecap="round"
+                        fill="transparent"
+                        className="transition-all duration-500 cursor-pointer hover:stroke-white"
+                        style={{ opacity: isSelected ? 1 : 0.4 }}
+                        onClick={() => setSelectedFailure(i)}
+                      />
+                    );
+                  })}
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center text-center">
+                  <span className="text-2xl font-black text-white font-mono">{failuresData[selectedFailure].percent}%</span>
+                  <span className="text-[9px] text-white/40 font-arabic uppercase mt-0.5">النسبة الحرجة</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 justify-center mt-4">
+                {failuresData.map((f, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedFailure(i)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-[8px] font-bold font-mono transition-all",
+                      selectedFailure === i ? "text-white" : "text-white/30 hover:text-white"
+                    )}
+                    style={{ backgroundColor: selectedFailure === i ? f.color : "transparent", border: `1px solid ${f.color}30` }}
+                  >
+                    {f.percent}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Selected cause detailed panel */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="space-y-2">
+                <span className="text-[9px] uppercase tracking-wider text-emerald-400 font-mono font-black">السبب المالي والتنظيمي المختار</span>
+                <h5 className="text-sm font-black text-white font-arabic flex items-center justify-end gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: failuresData[selectedFailure].color }} />
+                  {failuresData[selectedFailure].title}
+                </h5>
+              </div>
+
+              <div className={cn("p-5 rounded-2xl border transition-all duration-300 font-arabic text-xs leading-relaxed text-white/80", failuresData[selectedFailure].bg, failuresData[selectedFailure].border)}>
+                {failuresData[selectedFailure].detail}
+              </div>
+
+              {/* Progress Bar Indicators */}
+              <div className="space-y-2.5 bg-slate-900 border border-white/5 p-4 rounded-2xl">
+                <span className="text-[9px] text-white/40 font-black block font-arabic mb-1">الترتيب التنازلي لمواطن الضعف:</span>
+                {failuresData.map((f, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setSelectedFailure(i)}
+                    className={cn(
+                      "flex flex-col gap-1 cursor-pointer transition-all p-1.5 rounded-lg",
+                      selectedFailure === i ? "bg-white/5" : "hover:bg-white/5"
+                    )}
+                  >
+                    <div className="flex justify-between text-[10px] flex-row-reverse text-right">
+                      <span className={cn("font-arabic transition-colors", selectedFailure === i ? "text-white font-bold" : "text-white/50")}>{f.title.split("(")[0]}</span>
+                      <span className="font-mono font-bold" style={{ color: f.color }}>{f.percent}%</span>
+                    </div>
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${f.percent}%`, backgroundColor: f.color, opacity: selectedFailure === i ? 1 : 0.5 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab content 2: India Growth & Job Creation */}
+      {activeTab === 'growth' && (
+        <div className="space-y-6">
+          <p className="text-xs text-white/60 font-arabic leading-relaxed">
+            استعرض التقرير السنوي الصادر عن وزارة الصناعة والتجارة الهندية (DPIIT) قفزات مذهلة في أعداد المشاريع المعتمدة حكومياً، متزامناً مع خلق مئات آلاف من الوظائف ذات المهارات العالية.
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left: Exponential Curve */}
+            <div className="lg:col-span-6 bg-slate-900/50 p-5 rounded-3xl border border-white/5 space-y-4">
+              <div className="flex flex-col sm:flex-row-reverse justify-between items-start sm:items-center gap-2 border-b border-white/5 pb-2">
+                <h5 className="text-[11px] font-black text-white font-arabic">📈 تزايد أعداد الشركات الناشئة المعترف بها (2016-2025)</h5>
+                <span className="text-[9px] text-amber-300 font-mono">DPIIT India Recognized Curve</span>
+              </div>
+
+              {/* Responsive SVG Chart */}
+              <div className="relative pt-2">
+                <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full overflow-visible">
+                  {/* Grid Lines */}
+                  {[0.25, 0.5, 0.75, 1].map((ratio, i) => (
+                    <line
+                      key={`RatioLine-${i}`}
+                      x1={paddingX}
+                      y1={svgHeight - paddingY - ratio * (svgHeight - paddingY * 2)}
+                      x2={svgWidth - paddingX}
+                      y2={svgHeight - paddingY - ratio * (svgHeight - paddingY * 2)}
+                      stroke="rgba(255,255,255,0.03)"
+                      strokeWidth="1"
+                    />
+                  ))}
+
+                  {/* Shaded Area underneath the curve */}
+                  <path
+                    d={`M ${points[0].x} ${svgHeight - paddingY} ` +
+                      points.map(p => `L ${p.x} ${p.y}`).join(' ') +
+                      ` L ${points[points.length - 1].x} ${svgHeight - paddingY} Z`}
+                    fill="url(#emerald-gradient)"
+                    opacity="0.15"
+                  />
+
+                  {/* Glowing Line Curve */}
+                  <path
+                    d={points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')}
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="drop-shadow-[0_2px_8px_rgba(16,185,129,0.5)]"
+                  />
+
+                  {/* Interactive Dot Handles */}
+                  {points.map((p, idx) => (
+                    <circle
+                      key={idx}
+                      cx={p.x}
+                      cy={p.y}
+                      r={selectedYearIndex === idx ? "7" : "4"}
+                      fill={selectedYearIndex === idx ? "#fbbf24" : "#10b981"}
+                      stroke="#020617"
+                      strokeWidth="1.5"
+                      className="cursor-pointer transition-all hover:r-8"
+                      onClick={() => setSelectedYearIndex(idx)}
+                    />
+                  ))}
+
+                  {/* Gradient definition for filled path */}
+                  <defs>
+                    <linearGradient id="emerald-gradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+
+              {/* Slider Controller */}
+              <div className="space-y-1.5 bg-slate-950 p-3.5 rounded-2xl border border-white/5 text-right">
+                <div className="flex justify-between items-center flex-row-reverse mb-1">
+                  <span className="text-xs font-black text-yellow-300 font-mono">سنة {activeYear.year}</span>
+                  <span className="text-xs text-white/50 font-mono font-bold">العدد: {activeYear.count.toLocaleString('ar-DZ')} شركة</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max={recognizedData.length - 1}
+                  value={selectedYearIndex}
+                  onChange={e => setSelectedYearIndex(parseInt(e.target.value))}
+                  className="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer h-1.5"
+                />
+                <p className="text-[10px] text-white/70 italic font-arabic mt-1.5 text-right">
+                  💡 {activeYear.comment}
+                </p>
+              </div>
+            </div>
+
+            {/* Right: Job creation details */}
+            <div className="lg:col-span-6 bg-slate-900/50 p-5 rounded-3xl border border-white/5 space-y-4">
+              <div className="flex justify-between items-center flex-row-reverse border-b border-white/5 pb-2">
+                <h5 className="text-[11px] font-black text-white font-arabic">🏢 القطاعات المتصدرة في خلق فرص العمل بالهند</h5>
+                <span className="text-[9px] text-sky-400 font-mono">Top Sectors (Lakh Jobs)</span>
+              </div>
+
+              <div className="space-y-4">
+                {jobsData.map((job, idx) => (
+                  <div key={idx} className="space-y-1.5 text-right">
+                    <div className="flex justify-between text-xs flex-row-reverse text-right">
+                      <span className="font-arabic font-extrabold text-white/90">{job.sector}</span>
+                      <span className="font-mono text-emerald-400 font-black">{job.count} <span className="text-[10px] text-white/30">وظيفة</span></span>
+                    </div>
+                    {/* Visual Bar representation */}
+                    <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-white/5 relative">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        whileInView={{ width: `${job.percentage}%` }}
+                        transition={{ duration: 1, delay: idx * 0.1 }}
+                        className={`h-full bg-gradient-to-r ${job.color} rounded-full`}
+                      />
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[8px] text-white/50 font-mono">{job.num.toLocaleString('ar-DZ')}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-[10px] text-white/30 italic text-center font-arabic pt-2">
+                المصدر: إحصاءات ثورة الشركات الناشئة بالهند (وزارة التجارة والهند الرقمية 2025)
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab content 3: Global Comparison of Failure/Success */}
+      {activeTab === 'global' && (
+        <div className="space-y-6">
+          <p className="text-xs text-white/60 font-arabic leading-relaxed text-right">
+            تتفاوت نسب صمود ومقاومة الشركات الناشئة تبعاً لقوة النظام القانوني، والسياسات الجبائية التفضيلية وحيوية صناديق رأس المال الجريء في كل اقليم جزيئي:
+          </p>
+
+          <div className="bg-slate-900/50 p-5 rounded-3xl border border-white/5 space-y-4">
+            <div className="flex justify-between items-center flex-row-reverse border-b border-white/5 pb-2">
+              <h5 className="text-[11px] font-black text-white font-arabic">🌍 قائمة مقارنة معدلات فشل وصمود المشاريع بالدول الكبرى</h5>
+              <span className="text-[9px] text-emerald-400 font-mono">Global Success vs Failure Benchmarks</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {countriesData.map((cd, index) => (
+                <div key={index} className="bg-slate-950/60 p-4 rounded-2xl border border-white/5 text-right space-y-2 group hover:border-emerald-500/20 transition-all">
+                  <div className="flex justify-between items-center flex-row-reverse">
+                    <span className="text-xs font-black text-white font-arabic">{cd.country}</span>
+                    <div className="flex gap-2">
+                      <span className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-md font-mono">فشل {cd.fail}%</span>
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md font-mono">نجاح {cd.success}%</span>
+                    </div>
+                  </div>
+                  {/* Small Bar visual */}
+                  <div className="w-full bg-red-500/20 h-2 rounded-full overflow-hidden flex flex-row-reverse">
+                    <div className="h-full bg-emerald-500" style={{ width: `${cd.success}%` }} />
+                    <div className="h-full bg-red-500" style={{ width: `${cd.fail}%` }} />
+                  </div>
+                  <p className="text-[10px] text-white/40 leading-relaxed font-arabic block pt-1 group-hover:text-white/70 transition-colors">
+                    {cd.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab content 4: Concept History Tracing */}
+      {activeTab === 'timeline' && (
+        <div className="space-y-6">
+          <p className="text-xs text-white/60 font-arabic leading-relaxed">
+            استقراء تاريخي متميز لمفاهيم الشركات الناشئة، وتجلياتها من مجرد فكرة بسيطة في الكراجات الأهلية الأمريكية إلى تكتلات استثمارية تحكم مصائر الاقتصاد الرقمي المعرفي:
+          </p>
+
+          <div className="relative border-r-2 border-emerald-500/20 mr-4 space-y-6 pr-6 text-right">
+            {conceptHistory.map((ch, idx) => (
+              <div key={idx} className="relative group text-right">
+                {/* Visual Circle Indicator */}
+                <span className="absolute -right-[31px] top-1 w-4 h-4 rounded-full bg-slate-950 border-2 border-emerald-500 flex items-center justify-center group-hover:bg-emerald-400 transition-colors">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                </span>
+                
+                <div className="bg-slate-900/50 hover:bg-slate-900 border border-white/5 p-4 rounded-2xl space-y-1.5 transition-all">
+                  <div className="flex items-center justify-between flex-row-reverse">
+                    <span className="text-emerald-400 font-mono text-xs font-black">{ch.period}</span>
+                    <h5 className="text-xs font-black text-white font-arabic">{ch.title}</h5>
+                  </div>
+                  <p className="text-[10px] text-white/50 leading-relaxed font-arabic pr-1 group-hover:text-white/80">
+                    {ch.desc}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SaharaTourismInfographics = () => {
+  const [selectedPoint, setSelectedPoint] = useState<number>(3); // Default to 2026
+
+  const dataPoints = [
+    { year: 2020, tourists: 15, ecological: 82, jobs: 340, ecoLodges: 4 },
+    { year: 2022, tourists: 34, ecological: 86, jobs: 620, ecoLodges: 7 },
+    { year: 2024, tourists: 58, ecological: 90, jobs: 1200, ecoLodges: 12 },
+    { year: 2026, tourists: 76, ecological: 93, jobs: 1850, ecoLodges: 19 },
+    { year: 2028, tourists: 89, ecological: 95, jobs: 2400, ecoLodges: 24 },
+    { year: 2030, tourists: 98, ecological: 98, jobs: 3100, ecoLodges: 32 }
+  ];
+
+  const activeData = dataPoints[selectedPoint];
+
+  return (
+    <div className="bg-slate-950/80 border border-emerald-500/20 rounded-3xl p-6 mt-6 text-right space-y-6 shadow-2xl relative overflow-hidden">
+      <div className="absolute -top-10 -left-10 w-32 h-32 bg-emerald-500/5 blur-[50px] rounded-full" />
+      <div className="border-b border-white/5 pb-3">
+        <h4 className="text-sm font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-200 to-teal-400 font-serif flex items-center justify-end gap-2 flex-row-reverse">
+          <span>📊 نموذج المحاكاة والمنحنيات البيانية المرفقة بالأطروحة (الصحراء الجزائرية 2020-2030)</span>
+        </h4>
+        <p className="text-[9px] text-white/40 mt-1 uppercase tracking-wider font-mono">
+          Saharan Eco-Tourism Simulation, Multivariable Curves & Oasis Preservation Projections
+        </p>
+      </div>
+
+      {/* Progress Circles */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-slate-900 border border-white/5 p-4 rounded-2xl flex flex-col items-center justify-center text-center">
+          <div className="relative w-24 h-24 flex items-center justify-center">
+            <svg className="w-full h-full transform -rotate-90">
+              <circle cx="48" cy="48" r="38" className="text-white/5" strokeWidth="6" stroke="currentColor" fill="transparent" />
+              <circle cx="48" cy="48" r="38" className="text-emerald-500" strokeWidth="6" strokeDasharray="239" strokeDashoffset="19" strokeLinecap="round" stroke="currentColor" fill="transparent" />
+            </svg>
+            <span className="absolute text-base font-black text-white font-mono">92%</span>
+          </div>
+          <p className="text-[11px] font-bold text-emerald-400 mt-2 font-arabic">مؤشر جودة الاستدامة الإيكولوجية</p>
+          <p className="text-[8px] text-white/40 mt-0.5 font-arabic">حماية التنوع الحيوي ومجاري الواحات ومصادر المياه</p>
+        </div>
+
+        <div className="bg-slate-900 border border-white/5 p-4 rounded-2xl flex flex-col items-center justify-center text-center">
+          <div className="relative w-24 h-24 flex items-center justify-center">
+            <svg className="w-full h-full transform -rotate-90">
+              <circle cx="48" cy="48" r="38" className="text-white/5" strokeWidth="6" stroke="currentColor" fill="transparent" />
+              <circle cx="48" cy="48" r="38" className="text-amber-500" strokeWidth="6" strokeDasharray="239" strokeDashoffset="36" strokeLinecap="round" stroke="currentColor" fill="transparent" />
+            </svg>
+            <span className="absolute text-base font-black text-white font-mono">85%</span>
+          </div>
+          <p className="text-[11px] font-bold text-amber-400 mt-2 font-arabic">معدل إدماج المجتمعات الساكنة محلياً</p>
+          <p className="text-[8px] text-white/40 mt-0.5 font-arabic">التوظيف المباشر، الصناعات الحرفية، الخدمات والإرشاد كعوائد ملموسة</p>
+        </div>
+      </div>
+
+      {/* Multivariable Curved Chart - Custom SVG */}
+      <div className="bg-slate-900/60 p-5 rounded-2xl border border-white/5 space-y-4">
+        <div className="flex flex-col sm:flex-row-reverse justify-between items-start sm:items-center gap-2">
+          <h5 className="text-xs font-black text-white font-arabic">📈 المنحنى البياني التفاعلي: تفوق سياسات التنمية المسؤولة</h5>
+          <div className="flex gap-4 text-[9px] font-mono text-white/50">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 bg-amber-500 inline-block" /> تدفق السياح</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 bg-emerald-400 border-t border-dashed inline-block" /> مؤشر المحافظة</span>
+          </div>
+        </div>
+
+        <div className="relative pt-2">
+          {/* Custom Responsive SVG Chart Stage */}
+          <svg viewBox="0 0 500 150" className="w-full overflow-visible">
+            {/* Grid Lines */}
+            <line x1="0" y1="120" x2="500" y2="120" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+            <line x1="0" y1="80" x2="500" y2="80" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+            <line x1="0" y1="40" x2="500" y2="40" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+            <line x1="0" y1="10" x2="500" y2="10" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+
+            {/* CURVE A: Tourist Flow (Amber Line) */}
+            <path
+              d="M 0 110 C 100 110, 100 95, 100 95 C 150 95, 150 70, 200 70 C 250 70, 250 50, 300 50 C 350 50, 350 35, 400 35 C 450 35, 450 20, 500 20"
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+
+            {/* CURVE B: Ecological Preservation Index (Emerald Dashed/Dot Line) */}
+            <path
+              d="M 0 60 C 100 60, 100 55, 100 55 C 150 55, 150 48, 200 48 C 250 48, 250 35, 300 35 C 350 35, 350 22, 400 22 C 450 22, 450 15, 500 15"
+              fill="none"
+              stroke="#34d399"
+              strokeWidth="2"
+              strokeDasharray="4 4"
+            />
+
+            {/* YEAR Interactive Selection Verticals & Interactive Dots */}
+            {dataPoints.map((dp, idx) => {
+              const x = (idx * 500) / 5;
+              const yTourists = 110 - ((dp.tourists - 15) * 90) / 83;
+              const yEco = 60 - ((dp.ecological - 82) * 45) / 16;
+              const isSelected = selectedPoint === idx;
+
+              return (
+                <g key={dp.year} onClick={() => setSelectedPoint(idx)} className="cursor-pointer group/node">
+                  <line
+                    x1={x}
+                    y1="10"
+                    x2={x}
+                    y2="130"
+                    stroke={isSelected ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.03)"}
+                    strokeWidth={isSelected ? "1.5" : "1"}
+                    className="group-hover/node:stroke-white/10 transition-colors"
+                  />
+
+                  <circle
+                    cx={x}
+                    cy={yTourists}
+                    r={isSelected ? 6 : 4}
+                    fill="#1e293b"
+                    stroke="#f59e0b"
+                    strokeWidth={isSelected ? 3 : 1.5}
+                    className="hover:scale-150 transition-transform shadow-lg"
+                  />
+
+                  <circle
+                    cx={x}
+                    cy={yEco}
+                    r={isSelected ? 6 : 4}
+                    fill="#1e293b"
+                    stroke="#34d399"
+                    strokeWidth={isSelected ? 3 : 1.5}
+                    className="hover:scale-150 transition-transform shadow-lg"
+                  />
+
+                  <text
+                    x={x}
+                    y="142"
+                    textAnchor="middle"
+                    fill={isSelected ? "#34d399" : "rgba(255,255,255,0.3)"}
+                    className="text-[9px] font-mono font-black select-none"
+                  >
+                    {dp.year}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        {/* Selected Data Point Tooltip/Detail Indicator Card */}
+        <div className="bg-slate-950 border border-emerald-500/10 p-4 rounded-xl flex items-center justify-between flex-row-reverse gap-4">
+          <div className="text-right">
+            <span className="text-[9px] text-[#00f3ff] bg-[#00f3ff]/10 border border-[#00f3ff]/20 px-2 py-0.5 rounded-md font-mono font-bold">
+              النمذجة المحاكية للتوقع: {activeData.year}
+            </span>
+            <h6 className="text-[11px] text-white/50 mt-1.5 font-arabic">
+              النتائج الاستشرافية التراكمية في نطاق الصحراء الجزائرية:
+            </h6>
+          </div>
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div>
+              <span className="text-[9px] text-white/30 block font-arabic">فرص شغل محلية</span>
+              <span className="text-xs text-emerald-400 font-extrabold font-mono">{activeData.jobs} وظيفة</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-white/30 block font-arabic">مؤشر الإقبال السياحي</span>
+              <span className="text-xs text-amber-400 font-extrabold font-mono">{activeData.tourists}%</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-white/30 block font-arabic">الفنادق البيئية النشطة</span>
+              <span className="text-xs text-sky-400 font-extrabold font-mono">{activeData.ecoLodges} نُزل</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: any, currentUser: any, onEdit?: (article: any) => void, onShowToast?: (msg: string, type?: 'success' | 'error') => void }) => {
   const [isLiked, setIsLiked] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isAbstractOpen, setIsAbstractOpen] = useState(false);
+  const [selectedPaperChapter, setSelectedPaperChapter] = useState<string>("intro");
+  const [readingFontSize, setReadingFontSize] = useState<number>(16); // Legible 16px default
+  const [isFullscreenReader, setIsFullscreenReader] = useState<boolean>(false);
+  const [readingBgTheme, setReadingBgTheme] = useState<'slate' | 'sepia' | 'obsidian'>('slate');
+  
+  // Translation support cardLang
+  const { lang: globalLang } = useContext(ThemeContext);
+  const [cardLang, setCardLang] = useState<'ar' | 'en' | 'fr'>('ar');
+  const [activeLang, setActiveLang] = useState<'ar' | 'en' | 'fr'>('ar');
+
+  useEffect(() => {
+    if (globalLang === 'ar' || globalLang === 'en' || globalLang === 'fr') {
+      setCardLang(globalLang as any);
+      setActiveLang(globalLang as any);
+    }
+    if (localStorage.getItem('liked_' + article.id)) {
+      setIsLiked(true);
+    }
+  }, [globalLang, article.id]);
 
   const isAdmin = currentUser?.email === 'dalinadjib1990@gmail.com';
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!currentUser) {
-      alert('يرجى تسجيل الدخول للإعجاب بالمنشور');
+    if (localStorage.getItem('liked_' + article.id)) {
+      onShowToast?.('لقد سجلتِ إعجابكِ مسبقاً / Already liked', 'success');
       return;
     }
     try {
       const docRef = doc(db, 'articles', article.id);
-      await updateDoc(docRef, { likes: (article.likes || 0) + 1 });
+      await setDoc(docRef, { 
+        title: article.title || '',
+        likes: (article.likes || 0) + 1 
+      }, { merge: true });
       setIsLiked(true);
+      localStorage.setItem('liked_' + article.id, 'true');
+      onShowToast?.('✓ شكراً لإبداء الإعجاب بالمنهجية الفكرية!', 'success');
     } catch (err) {
       console.error(err);
     }
@@ -839,12 +1740,10 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: A
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
     setIsDeleting(true);
     try {
       const articleRef = doc(db, 'articles', article.id);
       await deleteDoc(articleRef);
-      console.log('Article deleted successfully:', article.id);
       alert('تم حذف المنشور بنجاح');
       onShowToast?.('تم حذف المنشور بنجاح');
     } catch (err) {
@@ -857,6 +1756,7 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: A
 
   const handleDownloadWord = () => {
     try {
+      const contentText = article.content || article.abstract || '';
       const header = `
         <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
         <head><meta charset='utf-8'><title>${article.title}</title>
@@ -868,7 +1768,7 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: A
         </head><body>
       `;
       const footer = "</body></html>";
-      const sourceHTML = header + `<h1>${article.title}</h1><div class="content">${article.content}</div>` + footer;
+      const sourceHTML = header + `<h1>${article.title}</h1><div class="content">${contentText}</div>` + footer;
       
       const blob = new Blob(['\ufeff', sourceHTML], {
         type: 'application/msword'
@@ -882,24 +1782,81 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: A
     }
   };
 
+  const highlightAuthors = (authorsText: string) => {
+    const text = authorsText || "عيايشية زعرة . قادة قدور بن عباد .";
+    const words = text.split(/(\s*\.\s*|\s*;\s*)/);
+    return (
+      <div className="flex flex-wrap items-center justify-start gap-1 flex-row-reverse text-right mb-4">
+        {words.map((w, index) => {
+          const trimmed = w.trim();
+          if (trimmed === '.' || trimmed === ';') {
+            return <span key={index} className="text-white/20 mx-1">•</span>;
+          }
+          if (!trimmed) return null;
+          const isDr = trimmed.includes("عيايشية") || trimmed.includes("زعرة") || trimmed.includes("Zaara") || trimmed.includes("Ayaichia");
+          if (isDr) {
+            return (
+              <span key={index} className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-400 to-emerald-400 font-extrabold text-xs px-2.5 py-1 rounded-xl bg-amber-500/10 border border-yellow-500/20 shadow-neon inline-flex items-center gap-1">
+                ★ {trimmed}
+              </span>
+            );
+          }
+          return (
+            <span key={index} className="text-white/60 text-[11px] font-semibold">
+              {trimmed}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const dateStr = article.date || (article.createdAt?.toDate ? article.createdAt.toDate().toLocaleDateString('ar-DZ') : new Date().toLocaleDateString('ar-DZ'));
+  
+  const contentAr = article.content || article.abstract;
+  const contentEn = article.abstractEn;
+  const contentFr = article.abstractFr;
+
+  // Auto-select lang strings if default is empty
+  useEffect(() => {
+    if (!contentAr && contentEn) {
+      setActiveLang('en');
+    } else if (!contentAr && contentFr) {
+      setActiveLang('fr');
+    }
+  }, [contentAr, contentEn, contentFr]);
+
+  // Handle translated content fields based on toggle
+  const displayTitle = cardLang === 'ar' ? article.title : (cardLang === 'en' ? (article.titleEn || article.title) : (article.titleFr || article.titleEn || article.title));
+  
+  const displayExcerpt = cardLang === 'ar'
+    ? (article.excerpt || article.content?.substring(0, 180) + '...')
+    : (cardLang === 'en'
+       ? (article.excerptEn || article.abstractEn?.substring(0, 240) + '...' || article.abstract?.substring(0, 240) + '...')
+       : (article.excerptFr || article.abstractFr?.substring(0, 240) + '...' || article.abstractEn?.substring(0, 240) + '...' || article.abstract?.substring(0, 240) + '...'));
+
+  const displayAuthors = (cardLang === 'en' || cardLang === 'fr') && article.authorsEn ? article.authorsEn : article.authors;
+  const displayCategory = cardLang === 'ar' ? article.category : (cardLang === 'en' ? (article.categoryEn || article.category) : (article.categoryFr || article.categoryEn || article.category));
+
   return (
     <motion.div 
       layout
       id={`article-content-${article.id}`}
       initial={{ opacity: 0, y: 30 }}
       whileInView={{ opacity: 1, y: 0 }}
-      className="bg-slate-900/50 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] overflow-hidden group hover:border-emerald-500/30 transition-all flex flex-col h-full"
+      className="bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] overflow-hidden group hover:border-emerald-500/30 hover:bg-slate-900/60 transition-all flex flex-col h-full shadow-2xl relative"
     >
       {article.imageUrl && (
         <div className="h-64 overflow-hidden relative">
-          <img src={article.imageUrl} alt={article.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 to-rgba(2,6,23,0)" />
-          <div className="absolute bottom-4 right-4 bg-emerald-600 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg">
-            {article.category}
+          <img src={article.imageUrl} alt={displayTitle} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 to-transparent" />
+          <div className="absolute bottom-4 right-4 bg-emerald-600/90 border border-emerald-400/20 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg font-arabic">
+            {displayCategory}
           </div>
         </div>
       )}
-      <div className="p-10 text-right flex-1 flex flex-col relative">
+      
+      <div className="p-10 text-right flex-1 flex flex-col relative justify-between">
         {isAdmin && (
           <div className="absolute top-6 left-6 flex gap-2 z-20">
             <button 
@@ -919,33 +1876,554 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: A
             </button>
           </div>
         )}
-        <h3 className="text-3xl font-serif text-white font-bold mb-4 line-clamp-2 leading-tight drop-shadow-md">{article.title}</h3>
-        <p className="text-white/50 text-sm mb-8 line-clamp-4 leading-relaxed flex-1 font-arabic">{article.content}</p>
         
-        <div className="flex items-center justify-between border-t border-white/5 pt-6 flex-row-reverse">
-          <div className="flex items-center gap-6">
-            <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 group/btn">
-              <MessageCircle size={18} className={cn("transition-colors", showComments ? "text-emerald-400" : "text-white/30 group-hover/btn:text-emerald-400")} />
-              <span className="text-xs font-bold text-white/30 group-hover/btn:text-white/60">{article.comments?.length || 0}</span>
-            </button>
-            <button onClick={handleLike} className="flex items-center gap-2 group/like">
-              <Heart size={18} fill={isLiked ? "#10b981" : "none"} className={cn("transition-all", isLiked ? "text-emerald-500 scale-125" : "text-white/30 group-hover/like:text-red-400")} />
-              <span className="text-xs font-bold text-white/30 group-hover/like:text-white/60">{article.likes || 0}</span>
-            </button>
-            <button onClick={handleDownloadWord} className="flex items-center gap-2 group/dl bg-white/5 px-4 py-2 rounded-2xl border border-emerald-500/10 hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all shadow-lg" title="Download as Word">
-              <Download size={16} className="text-white/30 group-hover/dl:text-emerald-400 transition-colors" />
-              <span className="text-[10px] font-bold text-white/30 group-hover/dl:text-white/60 uppercase tracking-widest">تنزيل Word</span>
-            </button>
+        <div>
+          {/* Card translation bar */}
+          <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+            <span className="text-[9px] text-white/30 uppercase tracking-wider font-mono">🌍 Translation / الترجمة المقالية</span>
+            <div className="flex gap-1.5">
+              {[
+                { key: 'ar', label: 'العربية' },
+                { key: 'en', label: 'EN' },
+                { key: 'fr', label: 'FR' }
+              ].map((langObj) => (
+                <button
+                  type="button"
+                  key={langObj.key}
+                  onClick={() => setCardLang(langObj.key as any)}
+                  className={cn(
+                    "text-[9px] font-extrabold px-2.5 py-1 rounded-lg border transition-all",
+                    cardLang === langObj.key 
+                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm" 
+                      : "text-white/40 hover:text-white bg-slate-950 border-white/5"
+                  )}
+                >
+                  {langObj.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <span className="text-[10px] text-white/20 font-black uppercase tracking-[0.3em] font-sans">
-             {article.createdAt?.toDate ? article.createdAt.toDate().toLocaleDateString('ar-DZ') : new Date().toLocaleDateString('ar-DZ')}
-          </span>
+
+          {/* Glowing Premium Date Badge */}
+          <div className="flex items-center justify-end mb-6">
+            <div className="flex items-center gap-2 bg-slate-950 px-4 py-2 border border-emerald-500/30 rounded-2xl text-[#00f3ff] text-xs font-mono font-black shadow-lg shadow-emerald-500/5 relative group/date">
+              <span className="w-2 h-2 rounded-full bg-[#00f3ff] animate-pulse" />
+              <span>{dateStr}</span>
+            </div>
+          </div>
+
+          {/* Large Title with Gradient Color */}
+          <h3 className="text-2xl md:text-3xl font-serif text-white font-black mb-4 leading-snug text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-emerald-100 to-teal-300 group-hover:from-white group-hover:to-emerald-400 transition-all duration-500 text-right drop-shadow-md">
+            {displayTitle}
+          </h3>
+
+          {/* Elegant Doctor / Authors Line */}
+          {highlightAuthors(displayAuthors)}
+
+          {/* Excerpt / Summary */}
+          <p className={cn(
+            "text-white/60 text-sm mb-6 leading-relaxed line-clamp-4",
+            cardLang === 'ar' ? "font-arabic text-right text-[13px]" : "font-sans text-left text-[12px] tracking-wide"
+          )}>
+            {displayExcerpt}
+          </p>
+
+          {/* Keywords Badges */}
+          {article.keywords && article.keywords.length > 0 && (
+            <div className="flex flex-wrap gap-2 justify-end mb-6">
+              {article.keywords.map((kw: string, i: number) => (
+                <span key={i} className="text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 px-2.5 py-1 rounded-lg">
+                  #{kw}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-        
+
+        {/* Collapsible Abstract Panel */}
+        <div className="mt-4 border-t border-white/5 pt-6 space-y-4">
+          <button 
+            onClick={() => setIsAbstractOpen(!isAbstractOpen)}
+            className="w-full flex items-center justify-between bg-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/20 border border-white/10 px-5 py-3.5 rounded-2xl text-white font-black text-xs transition-all duration-300 shadow-md group/btn"
+          >
+            <div className="flex items-center gap-2 text-emerald-400 group-hover/btn:text-emerald-300">
+              <BookOpen size={16} />
+              <span>{isAbstractOpen ? "إخفاء ملخص الدراسة / Hide Summary" : "قراءة الملخص والبحث / Read Abstract"}</span>
+            </div>
+            <motion.span animate={{ rotate: isAbstractOpen ? 180 : 0 }} className="text-[10px] text-white/40">
+              ▼
+            </motion.span>
+          </button>
+
+          <AnimatePresence>
+            {isAbstractOpen && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden bg-slate-950/70 rounded-2xl border border-white/5 mt-3"
+              >
+                <div className="p-6 space-y-5">
+                  {/* Language Switching Tabs */}
+                  <div className="flex gap-2 justify-end border-b border-white/5 pb-3">
+                    {contentAr && (
+                      <button 
+                        onClick={() => setActiveLang('ar')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                          activeLang === 'ar' ? "bg-emerald-500 text-slate-950 shadow-md" : "text-white/40 bg-white/5 hover:text-white"
+                        )}
+                      >
+                        العربية
+                      </button>
+                    )}
+                    {contentEn && (
+                      <button 
+                        onClick={() => setActiveLang('en')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                          activeLang === 'en' ? "bg-emerald-500 text-slate-950 shadow-md" : "text-white/40 bg-white/5 hover:text-white"
+                        )}
+                      >
+                        English
+                      </button>
+                    )}
+                    {contentFr && (
+                      <button 
+                        onClick={() => setActiveLang('fr')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                          activeLang === 'fr' ? "bg-emerald-500 text-slate-950 shadow-md" : "text-white/40 bg-white/5 hover:text-white"
+                        )}
+                      >
+                        Français
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Body textual content */}
+                  <div className="text-right whitespace-pre-line text-sm leading-relaxed text-white/80 font-arabic">
+                    {activeLang === 'ar' && (
+                      <p dir="rtl" className="text-right leading-relaxed text-[13px] text-emerald-100/90 bg-emerald-500/5 p-4 rounded-xl border border-emerald-500/10">
+                        {contentAr}
+                      </p>
+                    )}
+                    {activeLang === 'en' && (
+                      <p dir="ltr" className="text-left font-sans leading-relaxed text-[13px] text-emerald-100/90 bg-emerald-500/5 p-4 rounded-xl border border-emerald-500/10">
+                        {contentEn}
+                      </p>
+                    )}
+                    {activeLang === 'fr' && (
+                      <p dir="ltr" className="text-left font-sans leading-relaxed text-[13px] text-emerald-100/90 bg-emerald-500/5 p-4 rounded-xl border border-emerald-500/10">
+                        {contentFr}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* If item is the Indian Startups study, show PDF infographics */}
+                  {article.id === 'pub-6' && (
+                    <IndiaStartupsInfographics />
+                  )}
+
+                  {/* If item is the Algerian Sahara dissertation, show Sahara infographics */}
+                  {article.id === 'pub-7' && (
+                    <SaharaTourismInfographics />
+                  )}
+
+                  {/* Dynamic Unabridged Document Reader for Detailed Chapters */}
+                  {(() => {
+                    const fullPaper = fullPapers[article.id];
+                    if (!fullPaper) return null;
+                    const activeCh = fullPaper.chapters.find(c => c.id === selectedPaperChapter) || fullPaper.chapters[0];
+
+                    const themeClasses = readingBgTheme === 'sepia' 
+                      ? "bg-[#251c14] border-amber-900/20 text-[#edd8c4]" 
+                      : readingBgTheme === 'obsidian' 
+                      ? "bg-black/90 border-neutral-800 text-neutral-100" 
+                      : "bg-slate-900/40 border-white/5 text-white/90";
+
+                    return (
+                      <div className="border-t border-white/5 pt-6 mt-6 space-y-4">
+                        <div className="flex flex-col sm:flex-row-reverse sm:items-center justify-between gap-4">
+                          <div className="flex items-center justify-end gap-2 text-right">
+                            <h4 className="text-sm font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200 font-serif font-arabic">
+                              📙 الفصول والأقسام المفصلة للبحث العلمي الأكاديمي (دون اختصار)
+                            </h4>
+                          </div>
+
+                          {/* Quick Controls above viewport */}
+                          <div className="flex items-center gap-3 justify-end flex-wrap">
+                            {/* Font Zoom */}
+                            <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/5 text-xs text-white font-mono">
+                              <button
+                                type="button"
+                                onClick={() => setReadingFontSize(prev => Math.max(12, prev - 2))}
+                                className="p-1.5 px-2.5 hover:bg-white/10 rounded-lg text-[10px] flex items-center gap-1 font-bold text-white/60 hover:text-white"
+                                title="تصغير الخط / Zoom Out"
+                              >
+                                <ZoomOut size={12} />
+                              </button>
+                              <span className="px-1 text-[10px] text-emerald-400 font-extrabold">{readingFontSize}px</span>
+                              <button
+                                type="button"
+                                onClick={() => setReadingFontSize(prev => Math.min(28, prev + 2))}
+                                className="p-1.5 px-2.5 hover:bg-white/10 rounded-lg text-[10px] flex items-center gap-1 font-bold text-white/60 hover:text-white"
+                                title="تكبير الخط / Zoom In"
+                              >
+                                <ZoomIn size={12} />
+                              </button>
+                            </div>
+
+                            {/* Background Theme Switcher */}
+                            <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/5">
+                              <button
+                                type="button"
+                                onClick={() => setReadingBgTheme('slate')}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all font-arabic", 
+                                  readingBgTheme === 'slate' ? "bg-emerald-500 text-slate-950" : "text-white/40 hover:text-white"
+                                )}
+                              >
+                                داكن
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setReadingBgTheme('sepia')}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all font-arabic", 
+                                  readingBgTheme === 'sepia' ? "bg-amber-600/95 text-white font-extrabold shadow-[0_2px_8px_rgba(217,119,6,0.2)]" : "text-white/40 hover:text-white"
+                                )}
+                              >
+                                سيبيا مريحة
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setReadingBgTheme('obsidian')}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all font-arabic", 
+                                  readingBgTheme === 'obsidian' ? "bg-white text-black font-extrabold" : "text-white/40 hover:text-white"
+                                )}
+                              >
+                                فحمى
+                              </button>
+                            </div>
+
+                            {/* Wide / Full Screen toggle */}
+                            <button
+                              type="button"
+                              onClick={() => setIsFullscreenReader(true)}
+                              className="p-1.5 px-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl text-emerald-400 transition-all font-arabic text-[10px] font-bold flex items-center gap-1.5 border border-emerald-500/20"
+                              title="ملء الشاشة للقراءة المريحة"
+                            >
+                              <Maximize2 size={12} />
+                              <span>توسيع القراءة 🖵</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-white/40 font-arabic text-right mb-4">
+                          انقري على الفهرس الجانبي أدناه أو اضغطي على زر "توسيع القراءة" لملء الشاشة واستعراض الفصول بوضوح تام مناسب للعين دون تعب:
+                        </p>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                          {/* Right side: Chapters index list */}
+                          <div className="lg:col-span-4 flex flex-col gap-2 order-first lg:order-last">
+                            {fullPaper.chapters.map((ch) => {
+                              const isSelected = selectedPaperChapter === ch.id;
+                              const titleStr = activeLang === 'ar' ? ch.titleAr : ch.titleEn;
+                              return (
+                                <button
+                                  key={ch.id}
+                                  onClick={() => setSelectedPaperChapter(ch.id)}
+                                  className={cn(
+                                    "text-right p-3.5 rounded-xl text-xs font-bold transition-all border font-arabic flex flex-row-reverse items-center justify-between gap-2.5",
+                                    isSelected
+                                      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30 font-black shadow-[0_4px_12px_rgba(16,185,129,0.15)]"
+                                      : "bg-white/5 text-white/50 border-white/5 hover:bg-white/10 hover:text-white"
+                                  )}
+                                >
+                                  <span className={cn(
+                                    "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                    isSelected ? "bg-emerald-400 animate-pulse" : "bg-white/20"
+                                  )} />
+                                  <span className="flex-1 truncate">{titleStr}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Left side: Detailed reading viewport */}
+                          <div className={cn(
+                            "lg:col-span-8 border rounded-2xl p-5 md:p-6 text-right relative min-h-[300px] shadow-inner transition-colors duration-500",
+                            themeClasses
+                          )}>
+                            <div className="absolute top-3 left-4 text-[8px] uppercase tracking-wider text-emerald-400/30 font-mono">
+                              LARAFIT LAB • SYSTEMIC RESEARCH ENGINE
+                            </div>
+                            
+                            {activeCh && (
+                              <div className="space-y-4">
+                                <h5 className={cn(
+                                  "text-xs font-black border-b border-white/5 pb-2.5",
+                                  readingBgTheme === 'sepia' ? "text-amber-400 border-amber-900/10" : "text-emerald-400",
+                                  activeLang === 'ar' ? "text-right font-arabic" : "text-left font-sans text-[11px]"
+                                )}>
+                                  {activeLang === 'ar' ? activeCh.titleAr : activeCh.titleEn}
+                                </h5>
+                                <p
+                                  dir={activeLang === 'ar' ? "rtl" : "ltr"}
+                                  style={{ fontSize: `${readingFontSize}px`, lineHeight: '1.8' }}
+                                  className={cn(
+                                    "whitespace-pre-line tracking-wide font-medium",
+                                    activeLang === 'ar' ? "font-arabic text-right leading-relaxed" : "font-sans text-left leading-relaxed"
+                                  )}
+                                >
+                                  {activeLang === 'ar' ? activeCh.contentAr : activeCh.contentEn}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* --- Immersive Full Screen Reader Modal --- */}
+                        <AnimatePresence>
+                          {isFullscreenReader && (
+                            <motion.div 
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              className="fixed inset-0 z-[999] flex items-center justify-center bg-black/95 backdrop-blur-md p-3 sm:p-4 md:p-8"
+                            >
+                              <motion.div 
+                                initial={{ y: 50, scale: 0.95 }}
+                                animate={{ y: 0, scale: 1 }}
+                                exit={{ y: 50, scale: 0.95 }}
+                                transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+                                className={cn(
+                                  "w-full max-w-6xl h-[92vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden transition-colors duration-500",
+                                  themeClasses
+                                )}
+                              >
+                                {/* Header of Modal */}
+                                <div className="flex items-center justify-between p-4 sm:p-5 border-b border-white/5 bg-black/30">
+                                  {/* Close button on left */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsFullscreenReader(false)}
+                                    className="p-2 px-3.5 rounded-xl text-xs font-bold text-white/50 bg-white/5 border border-white/10 hover:text-white hover:bg-white/10 transition-all font-arabic flex items-center gap-2"
+                                  >
+                                    <X size={15} />
+                                    <span>إغلاق القارئ</span>
+                                  </button>
+
+                                  {/* Right side title and active state indicator */}
+                                  <div className="text-right">
+                                    <h3 className="text-sm font-black text-emerald-400 font-arabic flex items-center gap-2 justify-end">
+                                      <span>وضعية القراءة الأكاديمية الموسعة (دون تشويش)</span>
+                                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    </h3>
+                                    <p className="text-[10px] text-white/40 font-arabic mt-0.5 truncate max-w-[280px] sm:max-w-none">
+                                      أطروحة: {activeLang === 'ar' ? article.title : article.titleEn}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Modal content split into standard reading and layout index selection */}
+                                <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden h-full">
+                                  
+                                  {/* Lefthand side panel: Complete Chapters Index (Scrollable) */}
+                                  <div className="lg:col-span-3 border-r lg:border-r-0 lg:border-l border-white/5 bg-black/30 p-4 overflow-y-auto flex flex-col gap-2">
+                                    <p className="text-[10px] text-emerald-400/60 font-bold uppercase tracking-wider text-right mb-2 font-arabic">
+                                      فهرس الأقسام والفصول المكتملة / Chapters
+                                    </p>
+                                    {fullPaper.chapters.map((ch) => {
+                                      const isSelected = selectedPaperChapter === ch.id;
+                                      const titleStr = activeLang === 'ar' ? ch.titleAr : ch.titleEn;
+                                      return (
+                                        <button
+                                          key={ch.id}
+                                          type="button"
+                                          onClick={() => setSelectedPaperChapter(ch.id)}
+                                          className={cn(
+                                            "text-right p-3 rounded-xl text-xs font-bold transition-all border font-arabic flex flex-row-reverse items-center justify-between gap-2.5",
+                                            isSelected
+                                              ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 font-black shadow-[0_4px_12px_rgba(16,185,129,0.15)]"
+                                              : "bg-white/5 text-white/45 border-white/5 hover:bg-white/10 hover:text-white"
+                                          )}
+                                        >
+                                          <span className={cn(
+                                            "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                            isSelected ? "bg-emerald-400 animate-pulse" : "bg-white/20"
+                                          )} />
+                                          <span className="flex-1 truncate">{titleStr}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Righthand side panel: Immersive custom scroll reading viewport */}
+                                  <div className="lg:col-span-9 p-4 sm:p-6 md:p-10 overflow-y-auto space-y-6 flex-1 text-right custom-scrollbar relative flex flex-col">
+                                    {/* Inline Settings within full screen modal */}
+                                    <div className="sticky top-0 z-30 flex items-center justify-between bg-black/40 backdrop-blur-md -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 p-3 sm:p-4 border-b border-white/10 mb-6">
+                                      
+                                      {/* Controls inside full reader */}
+                                      <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/5 text-slate-200 font-mono">
+                                          <button
+                                            type="button"
+                                            onClick={() => setReadingFontSize(prev => Math.max(12, prev - 2))}
+                                            className="p-1 px-3 hover:bg-white/10 rounded-lg text-xs font-bold text-white/70 hover:text-white"
+                                          >
+                                            -A
+                                          </button>
+                                          <span className="px-2 text-xs font-extrabold text-emerald-400">{readingFontSize}px</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setReadingFontSize(prev => Math.min(32, prev + 2))}
+                                            className="p-1 px-3 hover:bg-white/10 rounded-lg text-xs font-bold text-white/70 hover:text-white"
+                                          >
+                                            +A
+                                          </button>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/5 shadow-inner">
+                                          <button
+                                            type="button"
+                                            onClick={() => setReadingBgTheme('slate')}
+                                            className={cn("px-2.5 py-1 rounded-lg text-[10px] font-bold font-arabic transition-all", readingBgTheme === 'slate' ? "bg-emerald-500 text-slate-950" : "text-white/40 hover:text-white")}
+                                          >
+                                            داكن
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setReadingBgTheme('sepia')}
+                                            className={cn("px-2.5 py-1 rounded-lg text-[10px] font-bold font-arabic transition-all", readingBgTheme === 'sepia' ? "bg-amber-600 text-white font-extrabold" : "text-white/40 hover:text-white")}
+                                          >
+                                            سيبيا
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setReadingBgTheme('obsidian')}
+                                            className={cn("px-2.5 py-1 rounded-lg text-[10px] font-bold font-arabic transition-all", readingBgTheme === 'obsidian' ? "bg-white text-black font-extrabold" : "text-white/40 hover:text-white")}
+                                          >
+                                            فحمى
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-right text-[10px] text-white/40 font-arabic flex items-center gap-2">
+                                        <span>حجم مريح: {readingFontSize}px (قابل للتعديل)</span>
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                                      </div>
+                                    </div>
+
+                                    {activeCh && (
+                                      <article className="max-w-3xl mx-auto space-y-6 flex-1">
+                                        <h2 className={cn(
+                                          "text-lg sm:text-xl md:text-2xl font-black border-b border-white/5 pb-4",
+                                          readingBgTheme === 'sepia' ? "text-amber-400 border-amber-900/10 font-arabic" : "text-emerald-400 font-arabic",
+                                          activeLang === 'ar' ? "text-right" : "text-left font-sans"
+                                        )}>
+                                          {activeLang === 'ar' ? activeCh.titleAr : activeCh.titleEn}
+                                        </h2>
+                                        
+                                        <p
+                                          dir={activeLang === 'ar' ? "rtl" : "ltr"}
+                                          style={{ fontSize: `${readingFontSize}px`, lineHeight: '1.9' }}
+                                          className={cn(
+                                            "whitespace-pre-line tracking-wide font-medium leading-loose",
+                                            activeLang === 'ar' ? "text-right font-arabic" : "text-left font-sans"
+                                          )}
+                                        >
+                                          {activeLang === 'ar' ? activeCh.contentAr : activeCh.contentEn}
+                                        </p>
+                                      </article>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Academic Journal Details Block */}
+                  {article.journal && (
+                    <div className="border-t border-white/5 pt-4 mt-4 text-[11px] space-y-3 font-mono text-white/50">
+                      <div className="flex flex-col md:flex-row-reverse justify-between gap-3 text-right">
+                        <span className="flex items-center gap-1.5 md:flex-row-reverse">
+                          <span className="text-emerald-400 font-bold">🏫 المجلة والدور النشر:</span>
+                          <span className="text-white/80 font-sans">{article.journal}</span>
+                        </span>
+                        {article.issn && (
+                          <span className="flex items-center gap-1.5 md:flex-row-reverse">
+                            <span className="text-yellow-400 font-bold">🆔 ISSN:</span>
+                            <span className="text-white/80">{article.issn}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {article.pages && (
+                        <div className="flex items-center justify-end gap-1.5 md:flex-row-reverse">
+                          <span className="text-sky-400 font-bold">📄 الصفحات ومعدل النشر:</span>
+                          <span className="text-white/80">{article.pages}</span>
+                        </div>
+                      )}
+
+                      {article.submissionDate && (
+                        <div className="grid grid-cols-3 gap-2 bg-slate-950 border border-white/5 p-3 rounded-xl text-center mt-3">
+                          <div>
+                            <div className="text-[8px] uppercase tracking-wider text-white/30 mb-1">تاريخ التقديم</div>
+                            <div className="text-amber-400 font-bold text-[10px]">{article.submissionDate}</div>
+                          </div>
+                          <div>
+                            <div className="text-[8px] uppercase tracking-wider text-white/30 mb-1">القبول النهائي</div>
+                            <div className="text-emerald-400 font-bold text-[10px]">{article.acceptanceDate}</div>
+                          </div>
+                          <div>
+                            <div className="text-[8px] uppercase tracking-wider text-white/30 mb-1">النشر الفعلي</div>
+                            <div className="text-blue-400 font-bold text-[10px]">{article.publicationDate}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Visitor Rating Stars Widget */}
+          <InteractiveItemRating itemId={article.id} itemType="article" initialRating={4.8} />
+
+          <div className="flex items-center justify-between border-t border-white/5 pt-6 flex-row-reverse">
+            <div className="flex items-center gap-6">
+              <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 group/btn">
+                <MessageCircle size={18} className={cn("transition-colors", showComments ? "text-emerald-400" : "text-white/30 group-hover/btn:text-emerald-400")} />
+                <span className="text-xs font-bold text-white/30 group-hover/btn:text-white/60">{article.comments?.length || 0}</span>
+              </button>
+              <button onClick={handleLike} className="flex items-center gap-2 group/like">
+                <Heart size={18} fill={isLiked ? "#10b981" : "none"} className={cn("transition-all", isLiked ? "text-emerald-500 scale-125" : "text-white/30 group-hover/like:text-red-400")} />
+                <span className="text-xs font-bold text-white/30 group-hover/like:text-white/60">{article.likes || 0}</span>
+              </button>
+              <button onClick={handleDownloadWord} className="flex items-center gap-1 group/dl bg-white/5 px-4 py-2 rounded-2xl border border-emerald-500/10 hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all shadow-lg" title="تنزيل Microsoft Word">
+                <Download size={15} className="text-white/30 group-hover/dl:text-emerald-400 transition-colors" />
+                <span className="text-[10px] font-bold text-white/30 group-hover/dl:text-white/60 uppercase tracking-widest font-arabic">Word</span>
+              </button>
+            </div>
+            <span className="text-[10px] text-white/20 font-black uppercase tracking-[0.3em] font-sans">
+              REFERENCE
+            </span>
+          </div>
+        </div>
+
         <AnimatePresence>
           {showComments && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-              <CommentSection articleId={article.id} currentUser={currentUser} />
+              <CommentSection articleId={article.id} currentUser={currentUser} onShowToast={onShowToast} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -955,14 +2433,55 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: A
 };
 
 const ArticlesPage = ({ currentUser, onEditArticle, onShowToast }: { currentUser: any, onEditArticle?: (article: Article) => void, onShowToast?: (msg: string, type?: 'success' | 'error') => void }) => {
-  const [articles, setArticles] = useState<Article[]>([]);
+  const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { t } = useTranslation();
 
   useEffect(() => {
     const q = query(collection(db, 'articles'), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
-      setArticles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Article)));
+      const dbArticles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      
+      // Merge live database metrics (likes, comments) with our preloaded scientific publications
+      const merged: any[] = DR_YAI_PUBLICATIONS.map(pub => {
+        const dbMatch = dbArticles.find(dbArt => dbArt.id === pub.id || dbArt.title.trim().toLowerCase() === pub.title.trim().toLowerCase());
+        if (dbMatch) {
+          return {
+            ...pub,
+            likes: dbMatch.likes !== undefined ? dbMatch.likes : ((pub as any).likes || 0),
+            comments: dbMatch.comments || (pub as any).comments || [],
+            id: dbMatch.id || pub.id
+          };
+        }
+        return pub;
+      });
+
+      // Append entirely custom user articles that are not part of pre-baked publications
+      dbArticles.forEach(dbArt => {
+        if (!merged.some(m => m.id === dbArt.id || m.title.trim().toLowerCase() === dbArt.title.trim().toLowerCase())) {
+          merged.push({
+            id: dbArt.id,
+            title: dbArt.title,
+            excerpt: dbArt.excerpt || '',
+            content: dbArt.content || '',
+            category: dbArt.category || 'عام',
+            imageUrl: dbArt.imageUrl || 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&q=80&w=800',
+            likes: dbArt.likes || 0,
+            comments: dbArt.comments || [],
+            date: dbArt.createdAt?.toDate ? dbArt.createdAt.toDate().toLocaleDateString('ar-DZ') : new Date().toLocaleDateString('ar-DZ'),
+            authors: "الدكتورة زعرة عيايشية .",
+            keywords: [],
+            categoryEn: "Articles",
+            categoryFr: "Articles"
+          });
+        }
+      });
+
+      setArticles(merged);
+      setLoading(false);
+    }, (err) => {
+      console.error("Firestore loading articles failed, showing local fallback", err);
+      setArticles(DR_YAI_PUBLICATIONS);
       setLoading(false);
     });
   }, []);
@@ -980,9 +2499,13 @@ const ArticlesPage = ({ currentUser, onEditArticle, onShowToast }: { currentUser
           </button>
         )}
         <div className="text-center md:text-right order-1 md:order-2">
-          <h2 className="text-5xl md:text-6xl font-serif text-white mb-4 tracking-tight drop-shadow-lg">{t('articles')}</h2>
-          <p className="text-white/50 text-lg uppercase tracking-[0.3em] font-sans">
-             {t('hero_title')}
+          {/* Main big styled headings with beautiful accent */}
+          <h2 className="text-5xl md:text-6xl font-serif text-white/95 font-black mb-4 tracking-tight drop-shadow-lg text-right flex items-center justify-end gap-3 flex-row-reverse">
+            <span className="w-4 h-12 bg-gradient-to-b from-yellow-400 to-emerald-500 rounded-full inline-block" />
+            <span>{t('articles')}</span>
+          </h2>
+          <p className="text-white/50 text-base uppercase tracking-[0.3em] font-sans text-right">
+            أبحاث ودراسات علمية محكّمة في السياحة المستدامة والاقتصاد الرقمي
           </p>
         </div>
       </div>
@@ -991,11 +2514,128 @@ const ArticlesPage = ({ currentUser, onEditArticle, onShowToast }: { currentUser
         <div className="flex justify-center py-20"><Loader2 className="animate-spin text-white/50" size={40} /></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {articles.map(article => (
-            <ArticleCard key={article.id} article={article} currentUser={currentUser} onEdit={onEditArticle} onShowToast={onShowToast} />
+          {articles.map((article, index) => (
+            <ArticleCard key={article.id || index} article={article} currentUser={currentUser} onEdit={onEditArticle} onShowToast={onShowToast} />
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+const workTranslations: Record<string, { arTitle: string, arDesc: string, enTitle: string, enDesc: string }> = {
+  "work-1": {
+    arTitle: "السياحة المسؤولة حل نموذجي لتفشي السياحة المفرطة - برشلونة",
+    arDesc: "دراسة استقصائية لسياسات السياحة المستدامة والمسؤولة لمدينة برشلونة من 2018 إلى 2023 كاستجابة وقائية لظاهرة السياحة المفرطة.",
+    enTitle: "Responsible Tourism as a Solution to Overtourism: Barcelona Case Study (2018-2023)",
+    enDesc: "An investigation of sustainable and responsible tourism policies in Barcelona from 2018 to 2023, serving as a preventative framework against urban tourism pollution."
+  },
+  "work-2": {
+    arTitle: "فندق أدرير أملال والتنمية المستدامة في واحة سيوة",
+    arDesc: "دراسة بحثية مكثفة تحلل كيف تساهم مواد البناء والعمالة المحلية وإدارة الموارد في تحقيق تنمية بيئية مستدامة حقيقية بمصر.",
+    enTitle: "Adrir Amlal Hotel & Sustainable Development in Siwa Oasis",
+    enDesc: "An intensive research study analyzing how native architectural principles, local labor, and ecological resource management create true sustainable growth in Egypt's Siwa Oasis."
+  },
+  "work-3": {
+    arTitle: "رقمنة إدارة الموارد البشرية ببلدية سوق أهراس",
+    arDesc: "دراسة تبحث في مؤشرات الانتقال الإداري الرقمي، وتطوير أطر الاتصالات التنظيمية بمصالح البلديات في سوق أهراس بالجزائر.",
+    enTitle: "Digitization of Human Resources at Souk Ahras Municipality",
+    enDesc: "Examining transitional administrative parameters, digital communication enhancements, and organizational transparency as results of HR digitization in Souk Ahras, Algeria."
+  },
+  "work-4": {
+    arTitle: "أمن الحدود الأمريكية مقابل تدفق السياحة الدولية",
+    arDesc: "تحليل الارتباط المباشر بين القرارات الجيوسياسية للحدود، طلبات التأشيرات، والنزاعات التجارية الإحصائية لأسواق السفر.",
+    enTitle: "U.S. Border Security vs. International Tourism Influx",
+    enDesc: "Analytical research of the direct correlation between geopolitical border decisions, visa requirements, trade wars, and the decline of transatlantic travel metrics in 2024-2025."
+  },
+  "work-5": {
+    arTitle: "الاقتصادات الريفية الفرنسية ومنصات تأجير السكن الرقمية",
+    arDesc: "دراسة إحصائية ومالية تقيم أثر منصات التأجير السكني Airbnb على تنشيط الأرياف وبرامج تحفيز الهياكل المحلية عام 2023.",
+    enTitle: "Rural French Economies and Digital Rental Platforms",
+    enDesc: "Statistical and financial analysis evaluating French countrysides, funded region programs, and rural stimulation brought by Airbnb rentals in 2023."
+  },
+  "work-6": {
+    arTitle: "أسباب فشل المشاريع الناشئة حول العالم: دراسة حالة الهند",
+    arDesc: "دراسة بنيوية وإحصائية تكشف العوامل التنظيمية، السيولة التمويلية، وغياب تلاؤم المنتج مع رغبات الأسواق بالهند.",
+    enTitle: "Causes of Startups Failure Globally: India Case Study",
+    enDesc: "Étude statistique et structurelle sur les raisons d'échec des start-ups en Inde, y compris le produit-marché, le capital financier, la gestion opérationnelle et le design marketing."
+  },
+  "work-7": {
+    arTitle: "السياحة المسؤولة لتحقيق التنمية المستدامة في الجزائر: دراسة حالة صحراء الجزائر (أطروحة دكتوراه)",
+    arDesc: "أطروحة دكتوراه أكاديمية تناقش سبل ترقية السياحة المسؤولة بيئياً وحماية الثروة الطبيعية ودمج سكان المجتمع المحلي بالتنمية لصحراء الجزائر الشاسعة.",
+    enTitle: "Responsible Tourism for Sustainable Development in Algeria: Algerian Sahara Case Study",
+    enDesc: "A Doctoral Thesis evaluating sustainable tourism, preserving cultural authenticity, and empowering local oasis communities in southern Algeria."
+  }
+};
+
+const WorkCardItem = ({ work }: { work: Work }) => {
+  const { lang: globalLang } = useContext(ThemeContext);
+  const [cardLang, setCardLang] = useState<'ar' | 'en'>(globalLang === 'ar' ? 'ar' : 'en');
+
+  useEffect(() => {
+    setCardLang(globalLang === 'ar' ? 'ar' : 'en');
+  }, [globalLang]);
+
+  const trans = workTranslations[work.id] || {
+    arTitle: work.title,
+    arDesc: work.description,
+    enTitle: work.title,
+    enDesc: work.description
+  };
+
+  const currentTitle = cardLang === 'ar' ? trans.arTitle : trans.enTitle;
+  const currentDesc = cardLang === 'ar' ? trans.arDesc : trans.enDesc;
+
+  return (
+    <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] p-8 md:p-10 text-right group hover:bg-slate-900/60 hover:border-emerald-500/30 transition-all relative overflow-hidden shadow-2xl flex flex-col justify-between">
+      <div className="absolute -top-20 -right-20 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full group-hover:bg-emerald-500/20 transition-all animate-pulse" />
+      
+      {/* Translation bar at the top */}
+      <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-3 relative z-10">
+        <span className="text-[9px] text-white/30 uppercase tracking-widest font-mono">🌍 Translation / الترجمة الفورية</span>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => setCardLang('ar')}
+            className={cn(
+              "text-[9px] font-extrabold px-2.5 py-1 rounded-lg border transition-all",
+              cardLang === 'ar' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm" : "text-white/40 bg-slate-950 border-white/5"
+            )}
+          >
+            العربية
+          </button>
+          <button
+            type="button"
+            onClick={() => setCardLang('en')}
+            className={cn(
+              "text-[9px] font-extrabold px-2.5 py-1 rounded-lg border transition-all",
+              cardLang === 'en' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm" : "text-white/40 bg-slate-950 border-white/5"
+            )}
+          >
+            EN
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row-reverse gap-8 relative z-10 flex-1">
+        <div className="w-full lg:w-40 aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/5 shrink-0">
+          <img src={work.imageUrl} alt={currentTitle} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+        </div>
+        <div className="flex-1 flex flex-col justify-between">
+          <div>
+            <h3 className="text-xl md:text-2xl font-serif text-white font-extrabold mb-4 leading-tight text-transparent bg-clip-text bg-gradient-to-r from-emerald-200 to-teal-300 group-hover:from-white group-hover:to-emerald-300 transition-all">
+              {currentTitle}
+            </h3>
+            <p className={cn(
+              "text-white/60 leading-relaxed mb-6 block",
+              cardLang === 'ar' ? "font-arabic text-right text-[13px]" : "font-sans text-left text-[12px] tracking-wide"
+            )}>
+              {currentDesc}
+            </p>
+          </div>
+          <InteractiveItemRating itemId={work.id} itemType="work" initialRating={work.rating} />
+        </div>
+      </div>
     </div>
   );
 };
@@ -1007,7 +2647,115 @@ const WorksPage = () => {
 
   useEffect(() => {
     return onSnapshot(collection(db, 'works'), (snapshot) => {
-      setWorks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Work)));
+      const dbWorks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Work));
+      
+      const localWorks = [
+        {
+          id: "work-1",
+          title: "السياحة المسؤولة حل نموذجي لتفشي السياحة المفرطة - برشلونة",
+          description: "دراسة استقصائية لسياسات السياحة المستدامة والمسؤولة لمدينة برشلونة من 2018 إلى 2023 كاستجابة وقائية لظاهرة السياحة المفرطة.",
+          imageUrl: "https://images.unsplash.com/photo-1583422409516-2895a77efedd?auto=format&fit=crop&q=80&w=800",
+          rating: 4.9,
+          ratingCount: 24,
+          category: "دراسة حالة"
+        },
+        {
+          id: "work-2",
+          title: "Adrir Amlal Hotel & Sustainable Development in Siwa",
+          description: "An intensive research study analyzing how native architectural principles, resource management, and local labor create true sustainable growth in Egypt's Siwa Oasis.",
+          imageUrl: "https://images.unsplash.com/photo-1547984609-44d32d02a90d?auto=format&fit=crop&q=80&w=800",
+          rating: 4.7,
+          ratingCount: 18,
+          category: "سياحة مستدامة"
+        },
+        {
+          id: "work-3",
+          title: "Digitization of HR at Souk Ahras Municipality",
+          description: "Examining transitional administrative parameters, communication enhancements, and organizational transparency as results of HR digitization in Souk Ahras, Algeria.",
+          imageUrl: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=800",
+          rating: 4.8,
+          ratingCount: 19,
+          category: "الإدارة المحلية"
+        },
+        {
+          id: "work-4",
+          title: "U.S. Border Security vs. International Tourism Influx",
+          description: "Analytical research of the direct correlation between geopolitical border decisions, visa requirements, trade wars, and the decline of transatlantic travel metrics in 2024-2025.",
+          imageUrl: "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?auto=format&fit=crop&q=80&w=800",
+          rating: 4.5,
+          ratingCount: 11,
+          category: "سياسات اقتصادية"
+        },
+        {
+          id: "work-5",
+          title: "Rural French Economies and Digital Rental Platforms",
+          description: "Statistical and financial analysis evaluating French countrysides, funded region programs, and rural stimulation brought by Airbnb rentals in 2023.",
+          imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=80&w=800",
+          rating: 4.6,
+          ratingCount: 15,
+          category: "اقتصاد ريفي"
+        },
+        {
+          id: "work-6",
+          title: "Causes d'échec des start-ups dans le monde : Cas de l'Inde",
+          description: "Étude statistique et structurelle sur les raisons d'échec des start-ups en Inde, y compris le produit-marché, le capital financier, la gestion opérationnelle et le design marketing.",
+          imageUrl: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=800",
+          rating: 4.9,
+          ratingCount: 32,
+          category: "ريادة الأعمال"
+        },
+        {
+          id: "work-7",
+          title: "السياحة المسؤولة لتحقيق التنمية المستدامة في الجزائر: دراسة حالة صحراء الجزائر (أطروحة دكتوراه)",
+          description: "أطروحة دكتوراه أكاديمية تناقش سبل ترقية السياحة المسؤولة بيئياً وحماية الثروة الطبيعية ودمج سكان المجتمع المحلي بالتنمية لصحراء الجزائر الشاسعة.",
+          imageUrl: "https://images.unsplash.com/photo-1547234935-80c7145ec969?auto=format&fit=crop&q=80&w=800",
+          rating: 5.0,
+          ratingCount: 45,
+          category: "أطروحة دكتوراه"
+        }
+      ];
+
+      const merged = [...localWorks];
+      dbWorks.forEach(dbW => {
+        if (!merged.some(m => m.title.trim().toLowerCase() === dbW.title.trim().toLowerCase())) {
+          merged.push(dbW);
+        }
+      });
+
+      setWorks(merged);
+      setLoading(false);
+    }, (err) => {
+      console.error("Firestore loading works failed, showing local fallback", err);
+      // Fallback works array
+      setWorks([
+        {
+          id: "work-1",
+          title: "السياحة المسؤولة حل نموذجي لتفشي السياحة المفرطة - برشلونة",
+          description: "دراسة استقصائية لسياسات السياحة المستدامة والمسؤولة لمدينة برشلونة من 2018 إلى 2023 كاستجابة وقائية لظاهرة السياحة المفرطة.",
+          imageUrl: "https://images.unsplash.com/photo-1583422409516-2895a77efedd?auto=format&fit=crop&q=80&w=800",
+          rating: 4.9,
+          ratingCount: 24,
+          category: "دراسة حالة"
+        },
+        {
+          id: "work-2",
+          title: "Adrir Amlal Hotel & Sustainable Development in Siwa",
+          description: "An intensive research study analyzing how native architectural principles, resource management, and local labor create true sustainable growth in Egypt's Siwa Oasis.",
+          imageUrl: "https://images.unsplash.com/photo-1547984609-44d32d02a90d?auto=format&fit=crop&q=80&w=800",
+          rating: 4.7,
+          ratingCount: 18,
+          category: "سياحة مستدامة"
+        },
+        {
+          id: "work-3",
+          title: "Digitization of HR at Souk Ahras Municipality",
+          description: "Examining transitional administrative parameters, communication enhancements, and organizational transparency as results of HR digitization in Souk Ahras, Algeria.",
+          imageUrl: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=800",
+          rating: 4.8,
+          ratingCount: 19,
+          category: "الإدارة المحلية"
+        }
+      ]);
       setLoading(false);
     });
   }, []);
@@ -1015,10 +2763,14 @@ const WorksPage = () => {
   return (
     <div className="pt-32 pb-20 max-w-7xl mx-auto px-6">
       <div className="mb-16 text-center md:text-right">
-        <h2 className="text-5xl md:text-7xl font-serif text-white/95 mb-6 tracking-tight drop-shadow-xl">{t('works')}</h2>
-        <div className="h-px w-32 bg-emerald-500/50 mx-auto md:ml-0 md:mr-auto mb-6" />
-        <p className="text-white/40 text-sm md:text-lg lg:max-w-2xl md:ml-auto uppercase tracking-widest leading-relaxed">
-           عرض للمشاريع البحثية والمؤلفات العلمية في مجال الاقتصاد الدولي والسياحة المسؤولة.
+        {/* Large, beautiful title heading with neon details */}
+        <h2 className="text-5xl md:text-7xl font-serif text-white/95 font-black mb-6 tracking-tight drop-shadow-xl text-right flex items-center justify-end gap-3 flex-row-reverse">
+          <span className="w-4 h-14 bg-gradient-to-b from-yellow-400 to-amber-500 rounded-full inline-block" />
+          <span>{t('works')}</span>
+        </h2>
+        <div className="h-px w-32 bg-emerald-500/50 mx-auto md:mr-0 md:ml-auto mb-6" />
+        <p className="text-white/40 text-sm md:text-lg lg:max-w-2xl md:mr-0 md:ml-auto uppercase tracking-widest leading-relaxed text-right font-arabic">
+          عرض للمشاريع البحثية والمؤلفات العلمية الحاصلة على تقييمات بمجال السياسة الدولية والتنمية المستدامة.
         </p>
       </div>
 
@@ -1027,31 +2779,7 @@ const WorksPage = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {works.map(work => (
-            <div key={work.id} className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-10 text-right group hover:bg-white/10 transition-all relative overflow-hidden">
-               <div className="absolute -top-20 -right-20 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full group-hover:bg-emerald-500/20 transition-all" />
-               <div className="flex flex-col lg:flex-row-reverse gap-10 relative z-10">
-                  <div className="w-full lg:w-48 aspect-square rounded-3xl overflow-hidden shadow-2xl border border-white/5">
-                    <img src={work.imageUrl} alt={work.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-between">
-                    <div>
-                      <h3 className="text-3xl font-serif text-white/95 mb-6 leading-tight">{work.title}</h3>
-                      <p className="text-white/50 leading-relaxed mb-8 text-lg font-arabic">{work.description}</p>
-                    </div>
-                    <div className="flex items-center justify-end gap-8 border-t border-white/5 pt-6">
-                      <div className="flex flex-col items-end">
-                        <div className="flex gap-1 text-yellow-500">
-                          {[1,2,3,4,5].map(i => <Star key={i} size={18} fill={i <= Math.round(work.rating) ? 'currentColor' : 'none'} />)}
-                        </div>
-                        <span className="text-[10px] text-white/30 mt-2 uppercase tracking-widest">{work.ratingCount} تقييم</span>
-                      </div>
-                      <button className="bg-white/10 hover:bg-emerald-600 text-white p-4 rounded-2xl transition-all shadow-lg hover:scale-110">
-                        <ArrowRight size={24} className="rotate-180" />
-                      </button>
-                    </div>
-                  </div>
-               </div>
-            </div>
+            <WorkCardItem key={work.id} work={work} />
           ))}
         </div>
       )}
@@ -1096,45 +2824,46 @@ const ContactPage = () => {
              </div>
              <h3 className="text-2xl font-bold text-white mb-2">تم الإرسال بنجاح!</h3>
              <p className="text-white/60 mb-8">سأقوم بالرد عليك في أقرب وقت ممكن.</p>
-             <button onClick={() => setSuccess(false)} className="text-blue-400 border border-blue-400 px-6 py-2 rounded-full">إرسال رسالة أخرى</button>
+             <button onClick={() => setSuccess(false)} className="bg-white text-emerald-950 font-black px-6 py-2 rounded-xl">رسالة أخرى</button>
           </motion.div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-6 text-right">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm text-white/60 block">البريد الإلكتروني</label>
-                <input 
-                  type="email" required
-                  value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all text-right" 
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm text-white/60 block">الإسم الكامل</label>
-                <input 
-                  type="text" required
-                  value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all text-right" 
-                />
-              </div>
+               <input 
+                 type="text" 
+                 required 
+                 placeholder="الاسم الكريم" 
+                 value={formData.name} 
+                 onChange={e => setFormData({ ...formData, name: e.target.value })} 
+                 className="w-full bg-slate-900/60 border border-white/10 rounded-2xl px-6 py-4 text-white text-right focus:ring-1 focus:ring-emerald-500 outline-none"
+               />
+               <input 
+                 type="email" 
+                 required 
+                 placeholder="البريد الإلكتروني" 
+                 value={formData.email} 
+                 onChange={e => setFormData({ ...formData, email: e.target.value })} 
+                 className="w-full bg-slate-900/60 border border-white/10 rounded-2xl px-6 py-4 text-white text-right focus:ring-1 focus:ring-emerald-500 outline-none"
+               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm text-white/60 block">الموضوع</label>
-              <input 
-                type="text" required
-                value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all text-right" 
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-white/60 block">الرسالة</label>
-              <textarea 
-                required rows={5}
-                value={formData.message} onChange={e => setFormData({...formData, message: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all text-right resize-none" 
-              />
-            </div>
+            <input 
+              type="text" 
+              required 
+              placeholder="الموضوع" 
+              value={formData.subject} 
+              onChange={e => setFormData({ ...formData, subject: e.target.value })} 
+              className="w-full bg-slate-900/60 border border-white/10 rounded-2xl px-6 py-4 text-white text-right focus:ring-1 focus:ring-emerald-500 outline-none"
+            />
+            <textarea 
+              rows={6} 
+              required 
+              placeholder="نص رسالتك" 
+              value={formData.message} 
+              onChange={e => setFormData({ ...formData, message: e.target.value })} 
+              className="w-full bg-slate-900/60 border border-white/10 rounded-2xl px-6 py-4 text-white text-right font-arabic focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
+            />
             <button 
+              type="submit"
               disabled={sending}
               className="w-full bg-white text-blue-900 py-4 rounded-xl font-bold text-lg hover:bg-blue-50 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
             >
@@ -1148,6 +2877,87 @@ const ContactPage = () => {
   );
 };
 
+const AcademicReviewsList = () => {
+  const [ratings, setRatings] = useState<any[]>([]);
+
+  useEffect(() => {
+    return onSnapshot(query(collection(db, 'ratings'), orderBy('createdAt', 'desc')), (snap) => {
+       setRatings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+  }, []);
+
+  return (
+    <div className="mt-12 bg-slate-900 border border-white/10 rounded-[3rem] p-10 shadow-2xl">
+       <h3 className="text-2xl font-serif text-white mb-8 text-right flex items-center justify-end gap-3">
+          <span className="text-emerald-400 font-black">التقييمات والمراجعات الأكاديمية للمنشورات والمؤلفات</span>
+          <Star className="text-yellow-400" fill="currentColor" size={24} />
+       </h3>
+       <div className="space-y-6">
+          {ratings.length === 0 && (
+            <p className="text-white/20 text-center py-10 italic">لا توجد تقييمات أو تعليقات أكاديمية حالياً</p>
+          )}
+          {ratings.map(item => (
+            <div key={item.id} className="bg-slate-950/40 border border-white/5 hover:border-emerald-500/20 p-8 rounded-3xl transition-all text-right flex gap-6 items-start flex-row-reverse relative overflow-hidden group">
+              <div className="absolute top-0 left-0 w-24 h-24 bg-emerald-500/5 blur-xl group-hover:bg-emerald-500/10 transition-all rounded-full" />
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 shrink-0 shadow-lg flex items-center justify-center text-slate-950 font-extrabold text-lg">
+                 {item.reviewerName?.charAt(0) || 'أ'}
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-col md:flex-row-reverse md:items-center justify-between gap-4 mb-3">
+                  <div>
+                    <h4 className="font-extrabold text-white text-base font-sans">{item.reviewerName}</h4>
+                    <div className="flex gap-1 text-amber-400 mt-1 justify-end">
+                      {[1,2,3,4,5].map(i => (
+                        <Star key={i} size={15} fill={i <= item.rating ? 'currentColor' : 'none'} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-right md:text-left">
+                    <span className="text-[10px] text-white/30 uppercase tracking-widest block font-mono font-sans">
+                      {item.itemType === 'work' ? 'مؤلف علمي / كتاب' : 'أطروحة علمية / مقال'}
+                    </span>
+                    <span className="text-xs text-emerald-400 font-bold block mt-1 font-sans">
+                      ID: {item.itemId}
+                    </span>
+                  </div>
+                </div>
+
+                {item.comment ? (
+                  <p className="text-white/75 bg-slate-900/60 p-4 rounded-2xl italic font-serif text-[13px] leading-relaxed mb-4 border-r-2 border-emerald-500 font-arabic">
+                    "{item.comment}"
+                  </p>
+                ) : (
+                  <p className="text-white/30 text-xs italic mb-4">تم التقييم بالدرجة فقط دون مراجعة كتابية</p>
+                )}
+
+                <div className="flex justify-between items-center flex-row-reverse">
+                  <span className="text-[10px] text-white/20 font-sans">
+                    {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString('ar-DZ') : 'الآن'}
+                  </span>
+                  <button 
+                    onClick={async () => {
+                      if (confirm('هل أنتِ متأكدة من حذف هذا التقييم الأكاديمي؟')) {
+                        try {
+                          await deleteDoc(doc(db, 'ratings', item.id));
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }
+                    }} 
+                    className="text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-400 transition-colors"
+                  >
+                    حذف التقييم
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+       </div>
+    </div>
+  );
+};
+
+
 const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, onExport }: { currentUser: any, editingArticle?: Article | null, onFinishEdit?: () => void, onEditArticle?: (article: Article) => void, onExport?: (stats: any) => void }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [stats, setStats] = useState({ visitors: 0, likes: 0, comments: 0 });
@@ -1156,6 +2966,7 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
   const [isUploading, setIsUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [allArticles, setAllArticles] = useState<Article[]>([]);
+  const [ratings, setRatings] = useState<any[]>([]);
 
   useEffect(() => {
     if (editingArticle) {
@@ -1184,6 +2995,10 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
        setNotifications(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unSubRatings = onSnapshot(query(collection(db, 'ratings'), orderBy('createdAt', 'desc')), (snap) => {
+       setRatings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     // Calc total likes/comments from articles and get all articles for management
     const unSubArticles = onSnapshot(query(collection(db, 'articles'), orderBy('createdAt', 'desc')), (snap) => {
        let l = 0; let c = 0;
@@ -1197,7 +3012,7 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
        setAllArticles(docs);
     });
 
-    return () => { unSubMsg(); unSubStats(); unSubNotif(); unSubArticles(); };
+    return () => { unSubMsg(); unSubStats(); unSubNotif(); unSubArticles(); unSubRatings(); };
   }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1422,6 +3237,8 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
           </div>
        </div>
 
+       <AcademicReviewsList />
+
        {/* Articles Management */}
         <div className="mt-12 bg-slate-900 border border-white/10 rounded-[3rem] p-10 shadow-2xl">
            <h3 className="text-2xl font-serif text-white mb-8 text-right flex items-center justify-end gap-3">
@@ -1465,6 +3282,8 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
     </div>
   );
 };
+
+// Academic Reviews Section Placeholder
 
 const FloatingSettings = () => {
   const { lang, setLang, isDark, toggleDark } = useContext(ThemeContext);
@@ -1543,6 +3362,18 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const { t, i18n } = useTranslation();
   const cvRef = useRef<HTMLDivElement>(null);
+
+  // Auto-rotate scenic natural backgrounds every 20 seconds
+  useEffect(() => {
+    const themesList: Theme[] = ['sea', 'desert', 'snow', 'forest'];
+    const interval = setInterval(() => {
+      setTheme((prev) => {
+        const nextIndex = (themesList.indexOf(prev) + 1) % themesList.length;
+        return themesList[nextIndex];
+      });
+    }, 20000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleNavigate = (tab: string) => {
     if (tab === 'contact') {

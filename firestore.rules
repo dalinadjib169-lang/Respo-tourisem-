@@ -64,8 +64,8 @@ service cloud.firestore {
       allow create: if isValidId(articleId) && isAdmin() && isValidArticle(incoming());
       allow update: if isValidId(articleId) && (
         (isAdmin() && isValidArticle(incoming())) ||
-        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['likes']) &&
-         incoming().likes == existing().likes + 1)
+        // Allow anyone (guest/visitor or signed-in) to update likes or comments of an article
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'comments']))
       );
       allow delete: if isValidId(articleId) && isAdmin();
 
@@ -79,18 +79,11 @@ service cloud.firestore {
       }
     }
 
-    // 3. Comments
+    // 3. Comments (Alternative match just in case subcollection is used)
     match /articles/{articleId}/comments/{commentId} {
       allow read: if true;
-      allow create: if isValidId(articleId) && isValidId(commentId) && isSignedIn() && isValidComment(incoming());
-      allow update, delete: if isValidId(commentId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
-
-      function isValidComment(data) {
-        return data.userName is string && data.userName.size() <= 100 &&
-               data.content is string && data.content.size() <= 2000 &&
-               data.createdAt != null &&
-               data.articleId == articleId;
-      }
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
     // 4. Works
@@ -119,6 +112,23 @@ service cloud.firestore {
                data.message is string && data.message.size() <= 5000 &&
                data.createdAt != null;
       }
+    }
+
+    // 6. Ratings
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // 7. Live Chat Messages
+    match /live_chat/{chatId} {
+      allow read, write: if true;
+    }
+
+    // 8. Notifications
+    match /notifications/{notificationId} {
+      allow read, write: if true;
     }
 
     // Stats
