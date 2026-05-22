@@ -1,8 +1,8 @@
 {
   "entities": {
     "Profile": {
-      "title": "PhD Student Profile",
-      "description": "Public profile including CV and bio",
+      "title": "User Profile",
+      "description": "Stores user profile and bio information",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
@@ -10,6 +10,7 @@
         "bio": { "type": "string" },
         "cvUrl": { "type": "string" },
         "email": { "type": "string" },
+        "profileImageUrl": { "type": "string" },
         "stats": {
           "type": "object",
           "properties": {
@@ -18,11 +19,11 @@
           }
         }
       },
-      "required": ["name", "title"]
+      "required": ["name", "title", "bio"]
     },
     "Article": {
       "title": "Article",
-      "description": "Educational or research blog post",
+      "description": "A blog post or article",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
@@ -34,23 +35,25 @@
         "authorId": { "type": "string" },
         "likes": { "type": "number" }
       },
-      "required": ["title", "content", "createdAt"]
+      "required": ["title", "content", "excerpt", "category", "createdAt", "authorId"]
     },
     "Comment": {
       "title": "Comment",
-      "description": "Comment on an article",
+      "description": "A comment on an article",
       "type": "object",
       "properties": {
         "articleId": { "type": "string" },
         "userName": { "type": "string" },
         "content": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "reply": { "type": "string" },
+        "replyAt": { "type": "string", "format": "date-time" }
       },
       "required": ["articleId", "userName", "content", "createdAt"]
     },
     "Work": {
-      "title": "Research Work",
-      "description": "Projects or publications",
+      "title": "Work",
+      "description": "A portfolio work or project",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
@@ -59,13 +62,14 @@
         "externalUrl": { "type": "string" },
         "rating": { "type": "number" },
         "ratingCount": { "type": "number" },
-        "category": { "type": "string" }
+        "category": { "type": "string" },
+        "pdfUrl": { "type": "string" }
       },
-      "required": ["title", "description"]
+      "required": ["title", "description", "imageUrl", "category"]
     },
     "Message": {
-      "title": "Visitor Message",
-      "description": "Message sent from contact form",
+      "title": "Message",
+      "description": "A contact message from a user",
       "type": "object",
       "properties": {
         "senderName": { "type": "string" },
@@ -76,29 +80,14 @@
         "replied": { "type": "boolean" },
         "replyContent": { "type": "string" }
       },
-      "required": ["senderName", "senderEmail", "message", "createdAt"]
+      "required": ["senderName", "senderEmail", "subject", "message", "createdAt"]
     }
   },
   "firestore": {
-    "profiles/main": {
-      "schema": "Profile",
-      "description": "Main profile document"
-    },
-    "articles/{articleId}": {
-      "schema": "Article",
-      "description": "Collection of blog articles"
-    },
-    "articles/{articleId}/comments/{commentId}": {
-      "schema": "Comment",
-      "description": "Comments for a specific article"
-    },
-    "works/{workId}": {
-      "schema": "Work",
-      "description": "Collection of research works"
-    },
-    "messages/{messageId}": {
-      "schema": "Message",
-      "description": "Visitor inquiries"
-    }
+    "profiles": { "schema": "Profile", "description": "User profiles" },
+    "articles": { "schema": "Article", "description": "Published articles" },
+    "articles/{articleId}/comments": { "schema": "Comment", "description": "Comments on articles" },
+    "works": { "schema": "Work", "description": "Portfolio works" },
+    "messages": { "schema": "Message", "description": "Contact messages" }
   }
 }

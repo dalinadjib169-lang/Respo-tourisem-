@@ -6,112 +6,125 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Helper Functions
-    function isSignedIn() { return request.auth != null; }
-    function isAdmin() { return isSignedIn() && request.auth.token.email == 'dalinadjib1990@gmail.com'; }
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
     
-    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-
-    // --- Entity Validations ---
-
-    function isValidArticle(data) {
-      return data.title is string && data.title.size() <= 200 &&
-             data.content is string && data.content.size() <= 50000 &&
-             data.createdAt is timestamp &&
-             (data.get('category', '') is string) &&
-             (data.get('likes', 0) is number);
+    function emailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    function isValidComment(data) {
-      return data.userName is string && data.userName.size() <= 100 &&
-             data.content is string && data.content.size() <= 1000 &&
-             data.createdAt is timestamp &&
-             data.articleId is string;
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'dalinadjib1990@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
     }
 
-    function isValidWork(data) {
-      return data.title is string && data.title.size() <= 200 &&
-             data.description is string && data.description.size() <= 2000 &&
-             (data.get('rating', 0) is number) &&
-             (data.get('ratingCount', 0) is number);
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidMessage(data) {
-      return data.senderName is string && data.senderName.size() <= 100 &&
-             data.senderEmail is string && data.senderEmail.size() <= 100 &&
-             data.message is string && data.message.size() <= 2000 &&
-             data.createdAt is timestamp &&
-             data.replied == false; // Initial messages must not be pre-replied
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // --- Match Rules ---
-    
-    // Stats
-    match /stats/{statId} {
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Collections ---
+
+    // 1. Profiles
+    match /profiles/{profileId} {
       allow read: if true;
-      allow update: if statId == 'global' && 
-                    incoming().diff(existing()).affectedKeys().hasOnly(['visitors']) &&
-                    incoming().visitors == (existing().get('visitors', 0) + 1);
-      allow create: if statId == 'global' && 
-                    incoming().keys().hasAll(['visitors']) && 
-                    incoming().keys().size() == 1 &&
-                    incoming().visitors == 1;
-      allow write: if isAdmin();
-    }
-
-    // Notifications
-    match /notifications/{notifId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Profiles
-    match /profiles/main {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // Articles
-    match /articles/{articleId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if isAdmin() && isValidArticle(incoming());
-      allow update: if (isAdmin() && isValidArticle(incoming())) ||
-                    (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['likes']));
-      allow delete: if isAdmin();
-
-      // Comments subcollection
-      match /comments/{commentId} {
-        allow list: if true;
-        allow create: if isValidComment(incoming()) && incoming().createdAt == request.time;
-        allow delete: if isAdmin();
+      allow create: if isValidId(profileId) && isOwner(profileId) && isValidProfile(incoming());
+      allow update: if isValidId(profileId) && isOwner(profileId) && isValidProfile(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'title', 'bio', 'cvUrl', 'profileImageUrl', 'stats', 'email'])
+      );
+      
+      function isValidProfile(data) {
+        return data.keys().hasAll(['name', 'title', 'bio']) &&
+               data.name is string && data.name.size() <= 100 &&
+               data.title is string && data.title.size() <= 200 &&
+               data.bio is string && data.bio.size() <= 5000 &&
+               (!('cvUrl' in data) || data.cvUrl is string) &&
+               (!('profileImageUrl' in data) || data.profileImageUrl is string);
       }
     }
 
-    // Works
+    // 2. Articles
+    match /articles/{articleId} {
+      allow read: if true;
+      allow create: if isValidId(articleId) && isAdmin() && isValidArticle(incoming());
+      allow update: if isValidId(articleId) && (
+        (isAdmin() && isValidArticle(incoming())) ||
+        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['likes']) &&
+         incoming().likes == existing().likes + 1)
+      );
+      allow delete: if isValidId(articleId) && isAdmin();
+
+      function isValidArticle(data) {
+        return data.title is string && data.title.size() <= 200 &&
+               data.content is string && data.content.size() <= 100000 &&
+               data.excerpt is string && data.excerpt.size() <= 1000 &&
+               data.category is string &&
+               data.authorId == request.auth.uid &&
+               data.createdAt != null;
+      }
+    }
+
+    // 3. Comments
+    match /articles/{articleId}/comments/{commentId} {
+      allow read: if true;
+      allow create: if isValidId(articleId) && isValidId(commentId) && isSignedIn() && isValidComment(incoming());
+      allow update, delete: if isValidId(commentId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
+
+      function isValidComment(data) {
+        return data.userName is string && data.userName.size() <= 100 &&
+               data.content is string && data.content.size() <= 2000 &&
+               data.createdAt != null &&
+               data.articleId == articleId;
+      }
+    }
+
+    // 4. Works
     match /works/{workId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if isAdmin() && isValidWork(incoming());
-      allow update: if (isAdmin() && isValidWork(incoming())) ||
-                    (incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'ratingCount']));
-      allow delete: if isAdmin();
+      allow read: if true;
+      allow write: if isValidId(workId) && isAdmin() && isValidWork(incoming());
+
+      function isValidWork(data) {
+        return data.title is string && data.title.size() <= 200 &&
+               data.description is string && data.description.size() <= 2000 &&
+               data.category is string;
+      }
     }
 
-    // Messages
+    // 5. Messages
     match /messages/{messageId} {
-      allow create: if isValidMessage(incoming()) && incoming().createdAt == request.time;
-      allow get, list: if isAdmin();
-      allow update: if isAdmin() && incoming().replied == true;
-      allow delete: if isAdmin();
+      allow read: if isAdmin();
+      allow create: if isValidId(messageId) && isValidMessage(incoming());
+      allow update: if isValidId(messageId) && isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['replied', 'replyContent']);
+      allow delete: if isValidId(messageId) && isAdmin();
+
+      function isValidMessage(data) {
+        return data.senderName is string && data.senderName.size() <= 100 &&
+               data.senderEmail is string && data.senderEmail.size() <= 100 &&
+               data.subject is string && data.subject.size() <= 200 &&
+               data.message is string && data.message.size() <= 5000 &&
+               data.createdAt != null;
+      }
     }
 
-    // Live Chat
-    match /live_chat/{chatId} {
-      allow create: if true;
-      allow read, list: if true; // In production, refine to only allow users to see their own chats
-      allow delete: if isAdmin();
+    // Stats
+    match /stats/global {
+      allow read: if true;
+      allow write: if true; // Visit tracking
     }
   }
 }
