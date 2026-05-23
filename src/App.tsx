@@ -3966,7 +3966,7 @@ export default function App() {
                   <div className="flex flex-col md:flex-row-reverse items-center justify-center gap-10 mb-20 pb-4">
                      <div className="relative w-48 h-48 md:w-56 md:h-56 shrink-0 aspect-square">
                         <div className="absolute inset-0 rounded-full neon-border shadow-[0_0_30px_rgba(0,243,255,0.3)] animate-pulse" />
-                        <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-white/20 bg-slate-800 relative group">
+                        <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-white/20 bg-slate-800 group">
                            <img 
                              src={profileAvatarUrl || '/src/assets/images/hijabi_profile_avatar_1779539854837.png'} 
                              alt="Dr Zaara" 
@@ -3998,10 +3998,10 @@ export default function App() {
                               e.stopPropagation();
                               avatarInputRef.current?.click();
                             }}
-                            className="absolute bottom-1 left-1 bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-full shadow-[0_4px_15px_rgba(16,185,129,0.5)] border-2 border-slate-950 active:scale-95 hover:scale-110 transition-all z-20 cursor-pointer flex items-center justify-center"
+                            className="absolute bottom-2 left-2 bg-emerald-500 hover:bg-emerald-400 text-white w-12 h-12 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.8)] border-3 border-slate-950 active:scale-95 hover:scale-110 transition-all z-30 cursor-pointer flex items-center justify-center"
                             title="تغيير صورة البروفيل"
                           >
-                             <Camera size={16} />
+                             <Camera size={20} className="stroke-white" />
                           </button>
                         )}
                      </div>
