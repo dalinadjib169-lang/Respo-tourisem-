@@ -2462,6 +2462,7 @@ const ArticlesPage = ({ currentUser, onEditArticle, onShowToast }: { currentUser
         if (dbMatch) {
           return {
             ...pub,
+            ...dbMatch, // This overrides title, content/abstract, imageUrl, category, etc.
             likes: dbMatch.likes !== undefined ? dbMatch.likes : ((pub as any).likes || 0),
             comments: dbMatch.comments || (pub as any).comments || [],
             id: dbMatch.id || pub.id
@@ -2668,7 +2669,7 @@ const WorksPage = () => {
           id: "work-1",
           title: "السياحة المسؤولة حل نموذجي لتفشي السياحة المفرطة - برشلونة",
           description: "دراسة استقصائية لسياسات السياحة المستدامة والمسؤولة لمدينة برشلونة من 2018 إلى 2023 كاستجابة وقائية لظاهرة السياحة المفرطة.",
-          imageUrl: "https://images.unsplash.com/photo-1583422409516-2895a77efedd?auto=format&fit=crop&q=80&w=800",
+          imageUrl: "https://images.unsplash.com/photo-1511527661048-7fe73d85e9a4?auto=format&fit=crop&q=80&w=800",
           rating: 4.9,
           ratingCount: 24,
           category: "دراسة حالة"
@@ -2677,7 +2678,7 @@ const WorksPage = () => {
           id: "work-2",
           title: "Adrir Amlal Hotel & Sustainable Development in Siwa",
           description: "An intensive research study analyzing how native architectural principles, resource management, and local labor create true sustainable growth in Egypt's Siwa Oasis.",
-          imageUrl: "https://images.unsplash.com/photo-1547984609-44d32d02a90d?auto=format&fit=crop&q=80&w=800",
+          imageUrl: "https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?auto=format&fit=crop&q=80&w=800",
           rating: 4.7,
           ratingCount: 18,
           category: "سياحة مستدامة"
@@ -2712,7 +2713,7 @@ const WorksPage = () => {
         {
           id: "work-6",
           title: "Causes d'échec des start-ups dans le monde : Cas de l'Inde",
-          description: "Étude statistique et structurelle sur les raisons d'échec des start-ups en Inde, y compris le produit-marché, le capital financier, la gestion opérationnelle et le design marketing.",
+          description: "Étude statistique et structurelle sur les raisons d'échec des start-ups en Inde, y compris le produit-marché, le capital financier, la gestion operational et le design marketing.",
           imageUrl: "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&q=80&w=800",
           rating: 4.9,
           ratingCount: 32,
@@ -2758,7 +2759,7 @@ const WorksPage = () => {
           id: "work-1",
           title: "السياحة المسؤولة حل نموذجي لتفشي السياحة المفرطة - برشلونة",
           description: "دراسة استقصائية لسياسات السياحة المستدامة والمسؤولة لمدينة برشلونة من 2018 إلى 2023 كاستجابة وقائية لظاهرة السياحة المفرطة.",
-          imageUrl: "https://images.unsplash.com/photo-1583422409516-2895a77efedd?auto=format&fit=crop&q=80&w=800",
+          imageUrl: "https://images.unsplash.com/photo-1511527661048-7fe73d85e9a4?auto=format&fit=crop&q=80&w=800",
           rating: 4.9,
           ratingCount: 24,
           category: "دراسة حالة"
@@ -2767,7 +2768,7 @@ const WorksPage = () => {
           id: "work-2",
           title: "Adrir Amlal Hotel & Sustainable Development in Siwa",
           description: "An intensive research study analyzing how native architectural principles, resource management, and local labor create true sustainable growth in Egypt's Siwa Oasis.",
-          imageUrl: "https://images.unsplash.com/photo-1547984609-44d32d02a90d?auto=format&fit=crop&q=80&w=800",
+          imageUrl: "https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?auto=format&fit=crop&q=80&w=800",
           rating: 4.7,
           ratingCount: 18,
           category: "سياحة مستدامة"
@@ -3233,15 +3234,18 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
   };
 
   const handlePostArticle = async () => {
-    if (!newArticle.title || !newArticle.content) return;
+    if (!newArticle.title || !newArticle.content) {
+      alert('الرجاء تعبئة العنوان والمحتوى قبل الحفظ!');
+      return;
+    }
     setLoading(true);
     try {
       if (editingArticle) {
         const docRef = doc(db, 'articles', editingArticle.id);
-        await updateDoc(docRef, {
+        await setDoc(docRef, {
           ...newArticle,
           updatedAt: serverTimestamp()
-        });
+        }, { merge: true });
         alert('تم تحديث المنشور بنجاح!');
         onFinishEdit?.();
       } else {
@@ -3257,6 +3261,7 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
       setNewArticle({ title: '', content: '', category: 'Tourism', imageUrl: '' });
     } catch (err) {
       console.error(err);
+      alert('حدث خطأ أثناء حفظ المنشور: ' + (err instanceof Error ? err.message : String(err)));
     }
     setLoading(false);
   };
