@@ -3963,8 +3963,8 @@ export default function App() {
                
                <div className="relative z-10">
                   {/* Header */}
-                  <div className="flex flex-col md:flex-row-reverse items-center gap-10 mb-20">
-                     <div className="relative w-48 h-48 md:w-56 md:h-56">
+                  <div className="flex flex-col md:flex-row-reverse items-center justify-center gap-10 mb-20 pb-4">
+                     <div className="relative w-48 h-48 md:w-56 md:h-56 shrink-0 aspect-square">
                         <div className="absolute inset-0 rounded-full neon-border shadow-[0_0_30px_rgba(0,243,255,0.3)] animate-pulse" />
                         <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-white/20 bg-slate-800 relative group">
                            <img 
@@ -3977,7 +3977,7 @@ export default function App() {
                            {isAdminEmail(user?.email) && (
                              <div 
                                onClick={() => avatarInputRef.current?.click()}
-                               className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white cursor-pointer transition-opacity duration-300 gap-1 text-[11px]"
+                               className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white cursor-pointer transition-opacity duration-300 gap-1 text-[11px] hidden md:flex"
                              >
                                <Camera size={18} />
                                <span>تغيير الصورة</span>
@@ -3991,10 +3991,23 @@ export default function App() {
                              accept="image/*" 
                            />
                         </div>
+                        {isAdminEmail(user?.email) && (
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              avatarInputRef.current?.click();
+                            }}
+                            className="absolute bottom-1 left-1 bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-full shadow-[0_4px_15px_rgba(16,185,129,0.5)] border-2 border-slate-950 active:scale-95 hover:scale-110 transition-all z-20 cursor-pointer flex items-center justify-center"
+                            title="تغيير صورة البروفيل"
+                          >
+                             <Camera size={16} />
+                          </button>
+                        )}
                      </div>
                      <div className="flex-1 text-center md:text-right">
-                        <h2 className="text-5xl md:text-7xl font-serif font-bold mb-6 tracking-tight">{t('author_name')}</h2>
-                        <p className="text-emerald-400 font-bold mb-8 uppercase tracking-[0.4em] text-sm">{t('hero_title')}</p>
+                        <h2 className="text-4xl sm:text-5xl md:text-7xl font-serif font-bold mb-6 tracking-tight leading-tight">{t('author_name')}</h2>
+                        <p className="text-emerald-400 font-bold mb-8 uppercase tracking-[0.2em] sm:tracking-[0.4em] text-xs sm:text-sm">{t('hero_title')}</p>
                         <div className="flex flex-wrap justify-center md:justify-start gap-4 flex-row-reverse">
                            <div className="bg-white/5 px-6 py-3 rounded-xl border border-white/10 text-xs flex items-center gap-2">
                               <Mail size={14} className="text-blue-400" />
