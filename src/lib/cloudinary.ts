@@ -14,14 +14,25 @@ export const uploadToCloudinary = async (file: File) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Cloudinary Response Error:', response.status, errorText);
+      console.warn('Cloudinary Response Error:', response.status, errorText);
       throw new Error(`Upload failed with status ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
     return data.secure_url;
   } catch (error) {
-    console.error('Cloudinary upload error:', error);
-    throw error;
+    console.warn('Cloudinary upload error, falling back to local Base64 storage:', error);
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to convert file to base64'));
+        }
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
   }
 };

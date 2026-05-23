@@ -38,7 +38,8 @@ import {
   Maximize2,
   Minimize2,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Camera
 } from 'lucide-react';
 import { 
   auth, 
@@ -389,7 +390,7 @@ const FloatingChat = ({ currentUser, isOpen, onClose }: { currentUser: any, isOp
     localStorage.setItem('chat_visitor_id', visitorId.current);
   }, []);
 
-  const isAdmin = currentUser?.email === 'dalinadjib1990@gmail.com';
+  const isAdmin = currentUser?.email === 'ayaichiazaara@gmail.com';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -661,7 +662,7 @@ const HomePage = ({ currentUser, signInWithGoogle }: { currentUser: any, signInW
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 1, ease: "easeOut" }}
-        className="w-full max-w-6xl relative z-10 flex flex-col items-center text-center"
+        className="w-full max-w-7xl relative z-10 flex flex-col items-center text-center"
       >
          {/* Central Hero Card */}
          <div className="w-full bg-slate-950/40 backdrop-blur-3xl border border-white/10 rounded-[4rem] p-10 md:p-24 shadow-3xl text-center relative overflow-hidden group">
@@ -680,7 +681,7 @@ const HomePage = ({ currentUser, signInWithGoogle }: { currentUser: any, signInW
               {t('author_name')}
             </h1>
             
-            <p className="text-xl md:text-3xl text-white/60 leading-relaxed max-w-4xl mx-auto font-arabic font-medium drop-shadow-xl mb-12 relative z-10">
+            <p className="text-xl md:text-3xl text-white/60 leading-relaxed max-w-6xl mx-auto font-arabic font-medium drop-shadow-xl mb-12 relative z-10">
               {t('hero_subtitle')}
             </p>
 
@@ -822,7 +823,7 @@ const CommentSection = ({ articleId, currentUser, onShowToast }: { articleId: st
         }, { merge: true });
 
         // Add Notification for Admin (optional, only if online)
-        if (!currentUser || currentUser.email !== 'dalinadjib1990@gmail.com') {
+        if (!currentUser || currentUser.email !== 'ayaichiazaara@gmail.com') {
           await addDoc(collection(db, 'notifications'), {
             type: 'comment',
             from: uName,
@@ -1716,7 +1717,7 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: a
     }
   }, [globalLang, article.id]);
 
-  const isAdmin = currentUser?.email === 'dalinadjib1990@gmail.com';
+  const isAdmin = currentUser?.email === 'ayaichiazaara@gmail.com';
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2319,7 +2320,7 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: a
                                     </div>
 
                                     {activeCh && (
-                                      <article className="max-w-3xl mx-auto space-y-6 flex-1">
+                                      <article className="max-w-5xl mx-auto space-y-6 flex-1">
                                         <h2 className={cn(
                                           "text-lg sm:text-xl md:text-2xl font-black border-b border-white/5 pb-4",
                                           readingBgTheme === 'sepia' ? "text-amber-400 border-amber-900/10 font-arabic" : "text-emerald-400 font-arabic",
@@ -2487,9 +2488,9 @@ const ArticlesPage = ({ currentUser, onEditArticle, onShowToast }: { currentUser
   }, []);
 
   return (
-    <div className="pt-32 pb-20 max-w-7xl mx-auto px-4">
+    <div className="pt-32 pb-20 max-w-[1500px] mx-auto px-4">
       <div className="mb-12 flex flex-col md:flex-row items-center justify-between gap-6 px-4">
-        {currentUser?.email === 'dalinadjib1990@gmail.com' && (
+        {currentUser?.email === 'ayaichiazaara@gmail.com' && (
           <button 
             onClick={() => window.dispatchEvent(new CustomEvent('switchTab', { detail: 'dashboard' }))}
             className="order-2 md:order-1 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-bold shadow-neon flex items-center gap-3 transition-all group"
@@ -2576,11 +2577,11 @@ const WorkCardItem = ({ work }: { work: Work }) => {
     setCardLang(globalLang === 'ar' ? 'ar' : 'en');
   }, [globalLang]);
 
-  const trans = workTranslations[work.id] || {
-    arTitle: work.title,
-    arDesc: work.description,
-    enTitle: work.title,
-    enDesc: work.description
+  const trans = {
+    arTitle: work.arTitle || (work.id && workTranslations[work.id] ? workTranslations[work.id].arTitle : work.title),
+    arDesc: work.arDesc || (work.id && workTranslations[work.id] ? workTranslations[work.id].arDesc : work.description),
+    enTitle: work.enTitle || (work.id && workTranslations[work.id] ? workTranslations[work.id].enTitle : work.title),
+    enDesc: work.enDesc || (work.id && workTranslations[work.id] ? workTranslations[work.id].enDesc : work.description)
   };
 
   const currentTitle = cardLang === 'ar' ? trans.arTitle : trans.enTitle;
@@ -2715,9 +2716,21 @@ const WorksPage = () => {
         }
       ];
 
-      const merged = [...localWorks];
+      // Replace or merge localWorks with any updates from Firestore
+      const merged = localWorks.map(localW => {
+        const dbMatch = dbWorks.find(dbW => dbW.id === localW.id || dbW.title.trim().toLowerCase() === localW.title.trim().toLowerCase());
+        if (dbMatch) {
+          return {
+            ...localW,
+            ...dbMatch // This overrides description, imageUrl, category, etc. from Firestore!
+          };
+        }
+        return localW;
+      });
+
+      // Also append entirely new works from Firestore that are not in localWorks
       dbWorks.forEach(dbW => {
-        if (!merged.some(m => m.title.trim().toLowerCase() === dbW.title.trim().toLowerCase())) {
+        if (!merged.some(m => m.id === dbW.id || m.title.trim().toLowerCase() === dbW.title.trim().toLowerCase())) {
           merged.push(dbW);
         }
       });
@@ -2761,7 +2774,7 @@ const WorksPage = () => {
   }, []);
 
   return (
-    <div className="pt-32 pb-20 max-w-7xl mx-auto px-6">
+    <div className="pt-32 pb-20 max-w-[1500px] mx-auto px-6">
       <div className="mb-16 text-center md:text-right">
         {/* Large, beautiful title heading with neon details */}
         <h2 className="text-5xl md:text-7xl font-serif text-white/95 font-black mb-6 tracking-tight drop-shadow-xl text-right flex items-center justify-end gap-3 flex-row-reverse">
@@ -2813,7 +2826,7 @@ const ContactPage = () => {
   };
 
   return (
-    <div className="pt-32 pb-20 max-w-4xl mx-auto px-4">
+    <div className="pt-32 pb-20 max-w-6xl mx-auto px-4">
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-10">
         <h2 className="text-4xl font-bold text-white mb-8 text-right">تواصل معي</h2>
         
@@ -2968,6 +2981,102 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
   const [allArticles, setAllArticles] = useState<Article[]>([]);
   const [ratings, setRatings] = useState<any[]>([]);
 
+  // Toggle sections between Articles and Scientific Works
+  const [activeDashSection, setActiveDashSection] = useState<'articles' | 'works'>('articles');
+  const [newWork, setNewWork] = useState({ 
+    title: '', 
+    description: '', 
+    arTitle: '', 
+    arDesc: '', 
+    enTitle: '', 
+    enDesc: '', 
+    category: 'دراسة حالة', 
+    imageUrl: '' 
+  });
+  const [dbWorksList, setDbWorksList] = useState<Work[]>([]);
+  const [workLoading, setWorkLoading] = useState(false);
+  const [editingWorkId, setEditingWorkId] = useState<string | null>(null);
+
+  const localWorksList = [
+    {
+      id: "work-1",
+      title: "السياحة المسؤولة حل نموذجي لتفشي السياحة المفرطة - برشلونة",
+      arTitle: "السياحة المسؤولة حل نموذجي لتفشي السياحة المفرطة - برشلونة",
+      enTitle: "Responsible Tourism as a Model Solution to Overtourism Influx - Barcelona",
+      category: "دراسة حالة",
+      arDesc: "دراسة استقصائية لسياسات السياحة المستدامة والمسؤولة لمدينة برشلونة من 2018 إلى 2023 كاستجابة وقائية لظاهرة السياحة المفرطة.",
+      enDesc: "An intensive study investigating responsible and sustainable tourism policies in Barcelona from 2018 to 2023 as an active barrier against overtourism."
+    },
+    {
+      id: "work-2",
+      title: "Adrir Amlal Hotel & Sustainable Development in Siwa",
+      arTitle: "أدرير أملال والتنمية المستدامة في واحة سيوة",
+      enTitle: "Adrir Amlal Hotel & Sustainable Development in Siwa",
+      category: "سياحة مستدامة",
+      arDesc: "دراسة بحثية مكثفة تحلل كيف تساهم مواد البناء والعمالة المحلية وإدارة الموارد في تحقيق تنمية بيئية مستدامة حقيقية بمصر.",
+      enDesc: "An intensive research study analyzing how native architectural principles, resource management, and local labor create true sustainable growth in Egypt's Siwa Oasis."
+    },
+    {
+      id: "work-3",
+      title: "Digitization of HR at Souk Ahras Municipality",
+      arTitle: "رقمنة إدارة الموارد البشرية ببلدية سوق أهراس",
+      enTitle: "Digitization of HR at Souk Ahras Municipality",
+      category: "الإدارة المحلية",
+      arDesc: "بحث استشرافي يتناول معايير التحول الإداري وتحسين منافذ التواصل والشفافية التنظيمية الناتجة عن تفعيل الرقمنة بسوق أهراس.",
+      enDesc: "Examining transitional administrative parameters, communication enhancements, and organizational transparency as results of HR digitization in Souk Ahras, Algeria."
+    },
+    {
+      id: "work-4",
+      title: "U.S. Border Security vs. International Tourism Influx",
+      arTitle: "أمن الحدود الأمريكية مقابل تدفق السياحة الدولية",
+      enTitle: "U.S. Border Security vs. International Tourism Influx",
+      category: "سياسات اقتصادية",
+      arDesc: "دراسة إحصائية تبحث الأثر المباشر لقرارات تشديد الرقابة الحدودية والاتفاقيات الدولية على تراجع نسب ومعدلات تدفق السياح.",
+      enDesc: "Analytical research of the direct correlation between geopolitical border decisions, visa requirements, trade wars, and the decline of transatlantic travel metrics in 2024-2025."
+    },
+    {
+      id: "work-5",
+      title: "Rural French Economies and Digital Rental Platforms",
+      arTitle: "الاقتصاد الريفي الفرنسي ومنصات الإيجار الرقمية",
+      enTitle: "Rural French Economies and Digital Rental Platforms",
+      category: "اقتصاد ريفي",
+      arDesc: "ورقة عمل تقيس وتحلل العوائد المالية لفرنسا وحركة الاستجمام بالقرى الناتجة عن ديناميكية منصات التأجير السكني.",
+      enDesc: "Statistical and financial analysis evaluating French countrysides, funded region programs, and rural stimulation brought by Airbnb rentals in 2023."
+    },
+    {
+      id: "work-6",
+      title: "Causes d'échec des start-ups dans le monde : Cas de l'Inde",
+      arTitle: "أسباب فشل الشركات الناشئة في الدول النامية: الهند نموذجاً",
+      enTitle: "Causes d'échec des start-ups dans le monde : Cas de l'Inde",
+      category: "ريادة الأعمال",
+      arDesc: "دراسة تحليلية وهيكلية لأبرز مسببات تعثر المشاريع الريادية بالهند بما يشمل تنافر الملاءمة السوقية وسوء الإيرادات.",
+      enDesc: "Étude statistique et structurelle sur les raisons d'échec des start-ups en Inde, y compris le produit-marché, le capital financier, la gestion opérationnelle et le design marketing."
+    },
+    {
+      id: "work-7",
+      title: "السياحة المسؤولة لتحقيق التنمية المستدامة في الجزائر: دراسة حالة صحراء الجزائر (أطروحة دكتوراه)",
+      arTitle: "السياحة المسؤولة لتحقيق التنمية المستدامة في الجزائر: دراسة حالة صحراء الجزائر (أطروحة دكتوراه)",
+      enTitle: "Responsible Tourism for Sustainable Development in Algerian Dessert (PhD Thesis)",
+      category: "أطروحة دكتوراه",
+      arDesc: "أطروحة دكتوراه أكاديمية تناقش سبل ترقية السياحة المسؤولة بيئياً وحماية الثروة الطبيعية ودمج سكان المجتمع المحلي بالتنمية لصحراء الجزائر الشاسعة.",
+      enDesc: "A Ph.D. dissertation proposing active actionable policies for ecological desert tourism and native Algerian community profit-sharing models."
+    }
+  ];
+
+  const mergedWorks = (localWorksList as any[]).map(localW => {
+    const dbMatch = dbWorksList.find(dbW => dbW.id === localW.id || dbW.title?.trim().toLowerCase() === localW.title?.trim().toLowerCase());
+    if (dbMatch) {
+      return { ...localW, ...dbMatch };
+    }
+    return localW;
+  }) as Work[];
+
+  dbWorksList.forEach(dbW => {
+    if (!mergedWorks.some(m => m.id === dbW.id || m.title?.trim().toLowerCase() === dbW.title?.trim().toLowerCase())) {
+      mergedWorks.push(dbW);
+    }
+  });
+
   useEffect(() => {
     if (editingArticle) {
        setNewArticle({
@@ -2976,6 +3085,7 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
          category: editingArticle.category || 'Tourism',
          imageUrl: editingArticle.imageUrl || ''
        });
+       setActiveDashSection('articles');
     } else {
        setNewArticle({ title: '', content: '', category: 'Tourism', imageUrl: '' });
     }
@@ -2999,6 +3109,11 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
        setRatings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Realtime works list snapshot query
+    const unSubWorks = onSnapshot(query(collection(db, 'works')), (snap) => {
+       setDbWorksList(snap.docs.map(d => ({ id: d.id, ...d.data() } as Work)));
+    });
+
     // Calc total likes/comments from articles and get all articles for management
     const unSubArticles = onSnapshot(query(collection(db, 'articles'), orderBy('createdAt', 'desc')), (snap) => {
        let l = 0; let c = 0;
@@ -3012,7 +3127,7 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
        setAllArticles(docs);
     });
 
-    return () => { unSubMsg(); unSubStats(); unSubNotif(); unSubArticles(); unSubRatings(); };
+    return () => { unSubMsg(); unSubStats(); unSubNotif(); unSubArticles(); unSubRatings(); unSubWorks(); };
   }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3025,6 +3140,83 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
       console.error(err);
     }
     setIsUploading(false);
+  };
+
+  const handleWorkImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    setIsUploading(true);
+    try {
+      const url = await uploadToCloudinary(e.target.files[0]);
+      setNewWork(prev => ({ ...prev, imageUrl: url }));
+    } catch (err) {
+      console.error(err);
+    }
+    setIsUploading(false);
+  };
+
+  const handleEditWorkButton = (work: Work) => {
+    setEditingWorkId(work.id);
+    setNewWork({
+      title: work.title || work.arTitle || '',
+      description: work.description || work.arDesc || '',
+      arTitle: work.arTitle || '',
+      arDesc: work.arDesc || '',
+      enTitle: work.enTitle || '',
+      enDesc: work.enDesc || '',
+      category: work.category || 'دراسة حالة',
+      imageUrl: work.imageUrl || ''
+    });
+    setActiveDashSection('works');
+    window.scrollTo({ top: 300, behavior: 'smooth' });
+  };
+
+  const handleClearWorkForm = () => {
+    setEditingWorkId(null);
+    setNewWork({ title: '', description: '', arTitle: '', arDesc: '', enTitle: '', enDesc: '', category: 'دراسة حالة', imageUrl: '' });
+  };
+
+  const handlePostWork = async () => {
+    if (!newWork.title && !newWork.arTitle) {
+      alert('الرجاء كتابة عنوان للعمل العلمي قبل الحفظ!');
+      return;
+    }
+    setWorkLoading(true);
+    try {
+      const finalArTitle = newWork.arTitle || newWork.title;
+      const finalArDesc = newWork.arDesc || newWork.description;
+      const finalEnTitle = newWork.enTitle || newWork.title;
+      const finalEnDesc = newWork.enDesc || newWork.description;
+      
+      const payload = {
+        title: finalArTitle,
+        description: finalArDesc,
+        arTitle: finalArTitle,
+        arDesc: finalArDesc,
+        enTitle: finalEnTitle,
+        enDesc: finalEnDesc,
+        category: newWork.category,
+        imageUrl: newWork.imageUrl,
+        updatedAt: serverTimestamp()
+      };
+
+      if (editingWorkId) {
+        const docRef = doc(db, 'works', editingWorkId);
+        await setDoc(docRef, payload, { merge: true });
+        alert('تم تحديث المؤلف العلمي بنجاح!');
+      } else {
+        await addDoc(collection(db, 'works'), {
+          ...payload,
+          rating: 5.0,
+          ratingCount: 1,
+          createdAt: serverTimestamp()
+        });
+        alert('تم إضافة المؤلف العلمي الجديد بنجاح!');
+      }
+      handleClearWorkForm();
+    } catch (err) {
+      console.error("Error saving work:", err);
+    }
+    setWorkLoading(false);
   };
 
   const handlePostArticle = async () => {
@@ -3081,11 +3273,147 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
           {/* New Post Form */}
           <div className="lg:col-span-7 bg-slate-950/40 backdrop-blur-3xl border border-white/10 rounded-[3rem] p-10 space-y-8 shadow-2xl relative overflow-hidden group">
              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[80px] -mr-16 -mt-16 group-hover:bg-emerald-500/10 transition-all" />
+              
+              {/* Form Tab Switchers */}
+              <div className="flex justify-end gap-3 border-b border-white/10 pb-6 flex-row-reverse mb-6">
+                 <button 
+                   onClick={() => {
+                     setActiveDashSection('articles');
+                     if (onFinishEdit) onFinishEdit();
+                   }}
+                   className={cn(
+                     "px-6 py-3 rounded-2xl text-xs font-bold font-arabic transition-all",
+                     activeDashSection === 'articles' ? "bg-emerald-500 text-white shadow-neon" : "bg-white/5 text-white/50 hover:text-white border border-white/5"
+                   )}
+                 >
+                    المقالات والمنشورات
+                 </button>
+                 <button 
+                   onClick={() => setActiveDashSection('works')}
+                   className={cn(
+                     "px-6 py-3 rounded-2xl text-xs font-bold font-arabic transition-all",
+                     activeDashSection === 'works' ? "bg-emerald-500 text-white shadow-neon" : "bg-white/5 text-white/50 hover:text-white border border-white/5"
+                   )}
+                 >
+                    المؤلفات والأعمال العلمية
+                 </button>
+              </div>
              <h3 className="text-2xl font-serif text-white font-bold text-right flex items-center justify-end gap-3">
                 <span className="text-emerald-400"><Plus size={24} /></span>
-                إنشاء منشور جديد (مقال، بحث، أو خاطرة مصورة)
+                {activeDashSection === 'works' ? 'إضافة عمل علمي أو مؤلف جديد للدكتورة' : 'إنشاء منشور جديد (مقال، بحث، أو خاطرة مصورة)'}
              </h3>
              <div className="space-y-6 relative z-10">
+                 {activeDashSection === 'works' ? (
+                    /* SCIENTIFIC WORKS ENTRY FORM */
+                    <div className="space-y-6 animate-fade-in text-right">
+                       <div className="flex gap-2 flex-wrap col-span-full justify-end flex-row-reverse mb-4">
+                         {['دراسة حالة', 'سياحة مستدامة', 'الإدارة المحلية', 'سياسات اقتصادية', 'اقتصاد ريفي', 'ريادة الأعمال', 'أطروحة دكتوراه'].map(cat => (
+                            <button 
+                              key={cat} 
+                              type="button"
+                              onClick={() => setNewWork({...newWork, category: cat})} 
+                              className={cn("px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest transition-all font-arabic", newWork.category === cat ? "bg-emerald-500 text-white shadow-neon" : "bg-white/5 text-white/30 border border-white/5")}
+                            >
+                              {cat}
+                            </button>
+                         ))}
+                       </div>
+
+                       <div className="space-y-4">
+                          <div>
+                            <label className="text-[10px] font-bold text-white/40 block mb-2 text-right font-arabic">العنوان باللغة العربية</label>
+                            <input 
+                              type="text" 
+                              value={newWork.arTitle}
+                              onChange={e => setNewWork({...newWork, arTitle: e.target.value, title: e.target.value})}
+                              placeholder="أدخلي عنوان البحث أو الكتاب بالعربية..."
+                              className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-4 text-white focus:ring-1 focus:ring-emerald-500 outline-none text-right font-arabic placeholder:text-white/20 transition-all hover:bg-white/5"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-bold text-white/40 block mb-2 text-right font-arabic">الخلاصة والوصف باللغة العربية</label>
+                            <textarea 
+                              rows={4}
+                              value={newWork.arDesc}
+                              onChange={e => setNewWork({...newWork, arDesc: e.target.value, description: e.target.value})}
+                              placeholder="أدخلي الملخص الأكاديمي والنتائج بالتفصيل..."
+                              className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-4 text-white focus:ring-1 focus:ring-emerald-500 outline-none text-right font-arabic placeholder:text-white/20 transition-all hover:bg-white/5 resize-none leading-relaxed"
+                            />
+                          </div>
+
+                          <div className="border-t border-white/5 pt-4 my-2" />
+
+                          <div>
+                            <label className="text-[10px] font-bold text-white/40 block mb-2 text-right font-arabic">Title in English</label>
+                            <input 
+                              type="text" 
+                              value={newWork.enTitle}
+                              onChange={e => setNewWork({...newWork, enTitle: e.target.value})}
+                              placeholder="Enter academic paper/work title in English..."
+                              className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-4 text-white focus:ring-1 focus:ring-emerald-500 outline-none text-left font-sans placeholder:text-white/20 transition-all hover:bg-white/5"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-bold text-white/40 block mb-2 text-right font-arabic">Abstract/Description in English</label>
+                            <textarea 
+                              rows={4}
+                              value={newWork.enDesc}
+                              onChange={e => setNewWork({...newWork, enDesc: e.target.value})}
+                              placeholder="Enter academic abstract, methodology, and notes in English..."
+                              className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-4 text-white focus:ring-1 focus:ring-emerald-500 outline-none text-left font-sans placeholder:text-white/20 transition-all hover:bg-white/5 resize-none leading-relaxed"
+                            />
+                          </div>
+                       </div>
+
+                       <div className="flex gap-4 flex-row-reverse items-center justify-end font-arabic">
+                          <label className="flex-1 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl p-8 text-center cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all group/upload relative overflow-hidden">
+                             {isUploading ? (
+                               <div className="flex flex-col items-center">
+                                  <Loader2 className="animate-spin text-emerald-500 mb-2" size={32} />
+                                  <span className="text-[10px] text-emerald-500 uppercase tracking-widest font-black">جاري رفع ومعالجة الصورة...</span>
+                               </div>
+                             ) : (
+                               <>
+                                  <Upload className="text-white/20 group-hover/upload:text-emerald-400 mx-auto mb-3 transition-colors" size={28} />
+                                  <span className="text-xs text-white/40 block group-hover/upload:text-white transition-colors">ارفقي غلاف أو شعار للعمل العلمي</span>
+                               </>
+                             )}
+                             {newWork.imageUrl && (
+                               <div className="absolute inset-0 bg-slate-950 p-2">
+                                  <img src={newWork.imageUrl} className="w-full h-full object-contain rounded-xl" />
+                               </div>
+                             )}
+                             <input type="file" onChange={handleWorkImageUpload} className="hidden" accept="image/*" />
+                          </label>
+                          {newWork.imageUrl && <button onClick={() => setNewWork({...newWork, imageUrl: ''})} className="bg-red-500/20 text-red-500 p-4 rounded-xl hover:bg-red-500 hover:text-white transition-all"><X size={20}/></button>}
+                       </div>
+
+                       <div className="flex gap-3">
+                          {editingWorkId && (
+                             <button 
+                               type="button"
+                               onClick={handleClearWorkForm}
+                               className="bg-white/10 hover:bg-white/20 text-white font-arabic font-black px-6 py-4 rounded-2xl transition-all text-sm animate-fade-in"
+                             >
+                                إلغاء التعديل
+                             </button>
+                          )}
+                          <button 
+                            type="button"
+                            onClick={handlePostWork}
+                            disabled={workLoading || isUploading}
+                            className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-400 hover:from-emerald-500 hover:to-emerald-300 text-white font-black py-4 rounded-2xl shadow-[0_20px_50px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-3 disabled:opacity-50 active:scale-95 text-sm font-arabic"
+                          >
+                             {workLoading ? <Loader2 className="animate-spin" /> : editingWorkId ? <Settings size={20} /> : <Plus size={20} />}
+                             <span>{editingWorkId ? 'حفظ تعديلات المؤلف العلمي' : 'نشر العمل العلمي الآن'}</span>
+                          </button>
+                       </div>
+                    </div>
+                 ) : (
+                    /* ORIGINAL ARTICLES ENTRY FORM FIELDS wrapper */
+                    <div className="space-y-6 w-full text-right animate-fade-in">
                 <div className="flex gap-2 flex-row-reverse mb-4">
                   <button onClick={() => setNewArticle({...newArticle, category: 'Tourism'})} className={cn("px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all", newArticle.category === 'Tourism' ? "bg-emerald-500 text-white shadow-neon" : "bg-white/5 text-white/30 border border-white/5")}>سياحة مسؤولة</button>
                   <button onClick={() => setNewArticle({...newArticle, category: 'Economy'})} className={cn("px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all", newArticle.category === 'Economy' ? "bg-blue-500 text-white shadow-neon" : "bg-white/5 text-white/30 border border-white/5")}>اقتصاد رقمي</button>
@@ -3136,6 +3464,8 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
                    {loading ? <Loader2 className="animate-spin" /> : editingArticle ? <Settings size={24} /> : <Plus size={24} />}
                    <span className="text-lg">{editingArticle ? 'حفظ التعديلات' : 'نشر في الموقع الآن'}</span>
                 </button>
+                    </div>
+                 )}
              </div>
           </div>
 
@@ -3246,37 +3576,82 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
               <BookOpen size={24} />
            </h3>
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {allArticles.length === 0 && <p className="text-white/20 text-center py-10 italic col-span-full">لا توجد منشورات حالياً لإدارتها</p>}
-              {allArticles.map(art => (
-                 <div key={art.id} className="flex items-center justify-between bg-white/5 p-5 rounded-2xl border border-white/5 hover:border-emerald-500/30 hover:bg-white/10 transition-all gap-4">
-                    <div className="flex items-center gap-1 shrink-0">
-                       <button 
-                         onClick={async () => {
-                           try {
-                             await deleteDoc(doc(db, 'articles', art.id));
-                           } catch (err) {
-                             console.error(err);
-                           }
-                         }} 
-                         className="p-2 text-white/20 hover:text-red-500 transition-colors"
-                         title="حذف"
-                       >
-                          <Trash2 size={16} />
-                       </button>
-                       <button 
-                         onClick={() => onEditArticle?.(art)} 
-                         className="p-2 text-white/20 hover:text-blue-500 transition-colors"
-                         title="تعديل"
-                       >
-                          <Settings size={16} />
-                       </button>
-                    </div>
-                    <div className="text-right flex-1 min-w-0">
-                       <p className="text-white font-bold text-[13px] truncate">{art.title}</p>
-                       <p className="text-white/30 text-[9px] mt-1 truncate">{art.category} • {art.createdAt?.toDate ? art.createdAt.toDate().toLocaleDateString('ar-DZ') : 'الآن'}</p>
-                    </div>
-                 </div>
-              ))}
+              {activeDashSection === 'works' ? (
+                 <>
+                   {mergedWorks.length === 0 && <p className="text-white/20 text-center py-10 italic col-span-full">لا توجد أعمال علمية حالياً لإدارتها</p>}
+                   {mergedWorks.map(wk => (
+                      <div key={wk.id} className="flex items-center justify-between bg-white/5 p-5 rounded-2xl border border-white/5 hover:border-emerald-500/30 hover:bg-white/10 transition-all gap-4">
+                         <div className="flex items-center gap-1 shrink-0">
+                            <button 
+                              onClick={async () => {
+                                if (wk.id.startsWith('work-')) {
+                                  alert('هذا العمل يعتبر من الأعمال الأساسية للموقع، يمكنكِ تعديل محتواه وصورته بدلاً من حذفه!');
+                                  return;
+                                }
+                                if (confirm('هل أنتِ متأكدة من رغبتكِ في حذف هذا العمل العلمي نهائياً؟')) {
+                                   try {
+                                     await deleteDoc(doc(db, 'works', wk.id));
+                                     alert('تم حذف العمل العلمي بنجاح!');
+                                   } catch (err) {
+                                     console.error("حذف عمل علمي فشل:", err);
+                                   }
+                                }
+                              }} 
+                              className="p-2 text-white/20 hover:text-red-500 transition-colors"
+                              title="حذف"
+                            >
+                               <Trash2 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => handleEditWorkButton(wk)} 
+                              className="p-2 text-white/20 hover:text-blue-500 transition-colors"
+                              title="تعديل"
+                            >
+                               <Settings size={16} />
+                            </button>
+                         </div>
+                         <div className="text-right flex-1 min-w-0">
+                            <p className="text-white font-bold text-[13px] truncate">{wk.arTitle || wk.title}</p>
+                            <p className="text-emerald-400 font-bold text-[9px] mt-1 truncate">{wk.category} • عمل علمي</p>
+                         </div>
+                      </div>
+                   ))}
+                 </>
+              ) : (
+                 <>
+                   {allArticles.length === 0 && <p className="text-white/20 text-center py-10 italic col-span-full">لا توجد منشورات حالياً لإدارتها</p>}
+                   {allArticles.map(art => (
+                      <div key={art.id} className="flex items-center justify-between bg-white/5 p-5 rounded-2xl border border-white/5 hover:border-emerald-500/30 hover:bg-white/10 transition-all gap-4">
+                         <div className="flex items-center gap-1 shrink-0">
+                            <button 
+                              onClick={async () => {
+                                try {
+                                  await deleteDoc(doc(db, 'articles', art.id));
+                                } catch (err) {
+                                  console.error(err);
+                                }
+                              }} 
+                              className="p-2 text-white/20 hover:text-red-500 transition-colors"
+                              title="حذف"
+                            >
+                               <Trash2 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => onEditArticle?.(art)} 
+                              className="p-2 text-white/20 hover:text-blue-500 transition-colors"
+                              title="تعديل"
+                            >
+                               <Settings size={16} />
+                            </button>
+                         </div>
+                         <div className="text-right flex-1 min-w-0">
+                            <p className="text-white font-bold text-[13px] truncate">{art.title}</p>
+                            <p className="text-white/30 text-[9px] mt-1 truncate">{art.category} • {art.createdAt?.toDate ? art.createdAt.toDate().toLocaleDateString('ar-DZ') : 'الآن'}</p>
+                         </div>
+                      </div>
+                   ))}
+                 </>
+              )}
            </div>
         </div>
     </div>
@@ -3288,6 +3663,7 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
 const FloatingSettings = () => {
   const { lang, setLang, isDark, toggleDark } = useContext(ThemeContext);
   const [isOpen, setIsOpen] = useState(false);
+  const { i18n } = useTranslation();
 
   return (
     <div className="fixed top-6 left-6 z-[100] flex flex-col items-start gap-3">
@@ -3313,14 +3689,18 @@ const FloatingSettings = () => {
                 {['ar', 'en', 'fr'].map(l => (
                   <button 
                     key={l}
-                    onClick={() => { setLang(l); setIsOpen(false); }}
+                    onClick={() => { 
+                      setLang(l); 
+                      i18n.changeLanguage(l);
+                      setIsOpen(false); 
+                    }}
                     className={cn(
                       "px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center justify-between",
                       lang === l ? "bg-emerald-500 text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
                     )}
                   >
                     <span>{l === 'ar' ? 'العربية' : l === 'en' ? 'English' : 'Français'}</span>
-                    <span className="text-[10px opacity-50">{l.toUpperCase()}</span>
+                    <span className="text-[10px] opacity-50">{l.toUpperCase()}</span>
                   </button>
                 ))}
              </div>
@@ -3332,7 +3712,7 @@ const FloatingSettings = () => {
 };
 
 const FloatingAdminButton = ({ currentUser, onNavigate, activeTab }: { currentUser: any, onNavigate: (tab: string) => void, activeTab: string }) => {
-  if (currentUser?.email !== 'dalinadjib1990@gmail.com' || activeTab === 'dashboard') return null;
+  if (currentUser?.email !== 'ayaichiazaara@gmail.com' || activeTab === 'dashboard') return null;
   
   return (
     <motion.button
@@ -3362,6 +3742,23 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const { t, i18n } = useTranslation();
   const cvRef = useRef<HTMLDivElement>(null);
+
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string>('');
+  const [isChangingAvatar, setIsChangingAvatar] = useState(false);
+
+  useEffect(() => {
+    const unSubProfile = onSnapshot(doc(db, 'settings', 'profile'), (snap) => {
+      if (snap.exists() && snap.data().avatarUrl) {
+        setProfileAvatarUrl(snap.data().avatarUrl);
+      } else {
+        setProfileAvatarUrl('/src/assets/images/hijabi_profile_avatar_1779539854837.png');
+      }
+    }, (err) => {
+      console.warn("Could not register settings onSnapshot:", err);
+      setProfileAvatarUrl('/src/assets/images/hijabi_profile_avatar_1779539854837.png');
+    });
+    return () => unSubProfile();
+  }, []);
 
   // Auto-rotate scenic natural backgrounds every 20 seconds
   useEffect(() => {
@@ -3528,9 +3925,9 @@ export default function App() {
       case 'articles': return <ArticlesPage currentUser={user} onEditArticle={handleEditArticle} onShowToast={showToast} />;
       case 'works': return <WorksPage />;
       case 'contact': return <ContactPage />;
-      case 'dashboard': return user?.email === 'dalinadjib1990@gmail.com' ? <Dashboard currentUser={user} editingArticle={editingArticle} onEditArticle={handleEditArticle} onFinishEdit={finishEdit} onExport={(stats) => downloadStatsWord(stats)} /> : <HomePage currentUser={user} signInWithGoogle={signInWithGoogle} />;
+      case 'dashboard': return user?.email === 'ayaichiazaara@gmail.com' ? <Dashboard currentUser={user} editingArticle={editingArticle} onEditArticle={handleEditArticle} onFinishEdit={finishEdit} onExport={(stats) => downloadStatsWord(stats)} /> : <HomePage currentUser={user} signInWithGoogle={signInWithGoogle} />;
       case 'cv': return (
-        <div className="pt-24 md:pt-32 pb-20 max-w-5xl mx-auto px-4">
+        <div className="pt-24 md:pt-32 pb-20 max-w-7xl mx-auto px-4">
             <div className="flex flex-col md:flex-row items-center justify-between mb-12 gap-6">
                 <div className="text-right">
                     <h2 className="text-5xl font-serif font-bold text-white mb-2">{t('cv')}</h2>
@@ -3556,9 +3953,11 @@ export default function App() {
                         <div className="absolute inset-0 rounded-full neon-border shadow-[0_0_30px_rgba(0,243,255,0.3)] animate-pulse" />
                         <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-white/20 bg-slate-800">
                            <img 
-                             src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=400&auto=format&fit=crop" 
+                             src={profileAvatarUrl || '/src/assets/images/hijabi_profile_avatar_1779539854837.png'} 
                              alt="Dr Zaara" 
-                             className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
+                             className="w-full h-full object-cover transition-all duration-700 cursor-pointer"
+                             referrerPolicy="no-referrer"
+                             onClick={() => { if (user?.email === 'ayaichiazaara@gmail.com') setIsChangingAvatar(true); }}
                            />
                         </div>
                      </div>
@@ -3637,7 +4036,7 @@ export default function App() {
                               <Settings size={24} /> اللغات والمهارات
                            </h3>
                            <div className="flex flex-wrap gap-3 justify-end mb-6">
-                              {['تحليل البيانات', 'الاقتصاد القياسي', 'إدارة المشاريع', 'التنمية المستدامة', 'EViews', 'SPSS'].map(skill => (
+                              {['تحليل البيانات', 'السياحة الإلكترونية', 'إدارة المشاريع', 'التنمية المستدامة', 'التحليل الإحصائي', 'SPSS'].map(skill => (
                                  <span key={skill} className="px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20 font-bold text-xs">
                                     {skill}
                                  </span>
@@ -3702,7 +4101,7 @@ export default function App() {
         <BackgroundSlider />
         <Navbar currentUser={user} onNavigate={handleNavigate} activeTab={activeTab} signInWithGoogle={signInWithGoogle} />
         
-        {user?.email === 'dalinadjib1990@gmail.com' && activeTab !== 'dashboard' && (
+        {user?.email === 'ayaichiazaara@gmail.com' && activeTab !== 'dashboard' && (
           <FloatingDashboardButton onNavigate={setActiveTab} />
         )}
 

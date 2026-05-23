@@ -105,6 +105,10 @@ export interface Work {
   ratingCount: number;
   category: string;
   pdfUrl?: string;
+  arTitle?: string;
+  arDesc?: string;
+  enTitle?: string;
+  enDesc?: string;
 }
 
 export interface Message {
