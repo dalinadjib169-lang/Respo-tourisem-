@@ -78,6 +78,16 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const isAdminEmail = (email?: string | null) => {
+  if (!email) return false;
+  const lower = email.toLowerCase().trim();
+  return (
+    lower === 'ayaichiazaara@gmail.com' ||
+    lower === 'zaaraayaichia@gmail.com' ||
+    lower === 'dalinadjib1990@gmail.com'
+  );
+};
+
 // --- Context ---
 const ThemeContext = createContext<{
   theme: Theme;
@@ -113,6 +123,9 @@ const Navbar = ({ currentUser, onNavigate, activeTab, signInWithGoogle }: {
     { id: 'cv', label: t('cv'), icon: UserIcon },
     { id: 'contact', label: t('contact'), icon: Mail },
   ];
+  if (isAdminEmail(currentUser?.email)) {
+    navItems.push({ id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard });
+  }
 
   const changeLang = (l: string) => {
     i18n.changeLanguage(l);
@@ -390,7 +403,7 @@ const FloatingChat = ({ currentUser, isOpen, onClose }: { currentUser: any, isOp
     localStorage.setItem('chat_visitor_id', visitorId.current);
   }, []);
 
-  const isAdmin = currentUser?.email === 'ayaichiazaara@gmail.com';
+  const isAdmin = isAdminEmail(currentUser?.email);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -823,7 +836,7 @@ const CommentSection = ({ articleId, currentUser, onShowToast }: { articleId: st
         }, { merge: true });
 
         // Add Notification for Admin (optional, only if online)
-        if (!currentUser || currentUser.email !== 'ayaichiazaara@gmail.com') {
+        if (!currentUser || !isAdminEmail(currentUser.email)) {
           await addDoc(collection(db, 'notifications'), {
             type: 'comment',
             from: uName,
@@ -1717,7 +1730,7 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: a
     }
   }, [globalLang, article.id]);
 
-  const isAdmin = currentUser?.email === 'ayaichiazaara@gmail.com';
+  const isAdmin = isAdminEmail(currentUser?.email);
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2490,7 +2503,7 @@ const ArticlesPage = ({ currentUser, onEditArticle, onShowToast }: { currentUser
   return (
     <div className="pt-32 pb-20 max-w-[1500px] mx-auto px-4">
       <div className="mb-12 flex flex-col md:flex-row items-center justify-between gap-6 px-4">
-        {currentUser?.email === 'ayaichiazaara@gmail.com' && (
+        {isAdminEmail(currentUser?.email) && (
           <button 
             onClick={() => window.dispatchEvent(new CustomEvent('switchTab', { detail: 'dashboard' }))}
             className="order-2 md:order-1 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-2xl font-bold shadow-neon flex items-center gap-3 transition-all group"
@@ -3712,7 +3725,7 @@ const FloatingSettings = () => {
 };
 
 const FloatingAdminButton = ({ currentUser, onNavigate, activeTab }: { currentUser: any, onNavigate: (tab: string) => void, activeTab: string }) => {
-  if (currentUser?.email !== 'ayaichiazaara@gmail.com' || activeTab === 'dashboard') return null;
+  if (!isAdminEmail(currentUser?.email) || activeTab === 'dashboard') return null;
   
   return (
     <motion.button
@@ -3742,6 +3755,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const { t, i18n } = useTranslation();
   const cvRef = useRef<HTMLDivElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string>('');
   const [isChangingAvatar, setIsChangingAvatar] = useState(false);
@@ -3912,10 +3926,11 @@ export default function App() {
     if (!e.target.files?.[0]) return;
     try {
       const url = await uploadToCloudinary(e.target.files[0]);
-      alert(t('upload_success') || 'تم الرفع بنجاح');
-      console.log('New Profile Image URL:', url);
+      await setDoc(doc(db, 'settings', 'profile'), { avatarUrl: url }, { merge: true });
+      alert(t('upload_success') || 'تم تحديد وتحديث صورة الملف الشخصي للدكتورة بنجاح!');
     } catch (err) {
       console.error(err);
+      alert('خطأ أثناء رفع وتحديث الصورة، يرجى المحاولة مجدداً');
     }
   };
 
@@ -3925,7 +3940,7 @@ export default function App() {
       case 'articles': return <ArticlesPage currentUser={user} onEditArticle={handleEditArticle} onShowToast={showToast} />;
       case 'works': return <WorksPage />;
       case 'contact': return <ContactPage />;
-      case 'dashboard': return user?.email === 'ayaichiazaara@gmail.com' ? <Dashboard currentUser={user} editingArticle={editingArticle} onEditArticle={handleEditArticle} onFinishEdit={finishEdit} onExport={(stats) => downloadStatsWord(stats)} /> : <HomePage currentUser={user} signInWithGoogle={signInWithGoogle} />;
+      case 'dashboard': return isAdminEmail(user?.email) ? <Dashboard currentUser={user} editingArticle={editingArticle} onEditArticle={handleEditArticle} onFinishEdit={finishEdit} onExport={(stats) => downloadStatsWord(stats)} /> : <HomePage currentUser={user} signInWithGoogle={signInWithGoogle} />;
       case 'cv': return (
         <div className="pt-24 md:pt-32 pb-20 max-w-7xl mx-auto px-4">
             <div className="flex flex-col md:flex-row items-center justify-between mb-12 gap-6">
@@ -3951,13 +3966,29 @@ export default function App() {
                   <div className="flex flex-col md:flex-row-reverse items-center gap-10 mb-20">
                      <div className="relative w-48 h-48 md:w-56 md:h-56">
                         <div className="absolute inset-0 rounded-full neon-border shadow-[0_0_30px_rgba(0,243,255,0.3)] animate-pulse" />
-                        <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-white/20 bg-slate-800">
+                        <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-white/20 bg-slate-800 relative group">
                            <img 
                              src={profileAvatarUrl || '/src/assets/images/hijabi_profile_avatar_1779539854837.png'} 
                              alt="Dr Zaara" 
-                             className="w-full h-full object-cover transition-all duration-700 cursor-pointer"
+                             className="w-full h-full object-cover transition-all duration-700 cursor-pointer animate-fade-in"
                              referrerPolicy="no-referrer"
-                             onClick={() => { if (user?.email === 'ayaichiazaara@gmail.com') setIsChangingAvatar(true); }}
+                             onClick={() => { if (isAdminEmail(user?.email)) avatarInputRef.current?.click(); }}
+                           />
+                           {isAdminEmail(user?.email) && (
+                             <div 
+                               onClick={() => avatarInputRef.current?.click()}
+                               className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white cursor-pointer transition-opacity duration-300 gap-1 text-[11px]"
+                             >
+                               <Camera size={18} />
+                               <span>تغيير الصورة</span>
+                             </div>
+                           )}
+                           <input 
+                             type="file" 
+                             ref={avatarInputRef} 
+                             onChange={handleProfileImageUpdate} 
+                             className="hidden" 
+                             accept="image/*" 
                            />
                         </div>
                      </div>
@@ -4101,7 +4132,7 @@ export default function App() {
         <BackgroundSlider />
         <Navbar currentUser={user} onNavigate={handleNavigate} activeTab={activeTab} signInWithGoogle={signInWithGoogle} />
         
-        {user?.email === 'ayaichiazaara@gmail.com' && activeTab !== 'dashboard' && (
+        {isAdminEmail(user?.email) && activeTab !== 'dashboard' && (
           <FloatingDashboardButton onNavigate={setActiveTab} />
         )}
 
