@@ -133,7 +133,7 @@ const Navbar = ({ currentUser, onNavigate, activeTab, signInWithGoogle }: {
   };
 
   return (
-    <nav className="fixed md:top-0 md:right-0 bottom-0 md:bottom-auto w-full md:w-28 md:h-full z-[60] flex md:flex-col items-center justify-between px-6 md:px-0 py-4 md:py-10 bg-slate-950/80 backdrop-blur-3xl border-t md:border-t-0 md:border-l border-white/10 shadow-2xl transition-all duration-500">
+    <nav className="fixed md:top-0 md:right-0 bottom-0 md:bottom-auto w-full md:w-28 md:h-full z-[60] flex md:flex-col items-center justify-between px-3 md:px-0 py-2.5 md:py-10 bg-slate-950/85 backdrop-blur-3xl border-t md:border-t-0 md:border-l border-white/10 shadow-2xl transition-all duration-500">
       <div className="hidden md:flex flex-col items-center gap-2 mb-8">
         <div 
           className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-500 to-blue-600 flex items-center justify-center shadow-neon ring-4 ring-white/10 hover:scale-105 transition-transform duration-500 cursor-pointer group relative"
@@ -145,57 +145,57 @@ const Navbar = ({ currentUser, onNavigate, activeTab, signInWithGoogle }: {
         <span className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] mt-1">Algeria</span>
       </div>
       
-      <div className="flex-1 md:flex-none flex md:flex-col items-center justify-around w-full gap-2 lg:gap-8">
+      <div className="flex-1 md:flex-none flex md:flex-col items-center justify-around w-full gap-1 md:gap-8">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
             className={cn(
-              "group relative p-4 rounded-2xl transition-all duration-500 flex flex-col items-center gap-1",
+              "group relative p-2 md:p-4 rounded-xl md:rounded-2xl transition-all duration-500 flex flex-col items-center gap-1",
               activeTab === item.id 
-                ? "bg-white text-slate-950 shadow-neon scale-110" 
+                ? "bg-white text-slate-950 shadow-neon scale-105 md:scale-110" 
                 : item.id === 'dashboard'
                   ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
                   : "text-white/40 hover:bg-white/5 hover:text-white"
             )}
           >
-            <item.icon size={20} className="relative z-10" />
+            <item.icon size={18} className="relative z-10 md:size-5" />
             <span className="text-[8px] font-bold uppercase tracking-tighter hidden md:block">{item.label}</span>
           </button>
         ))}
       </div>
 
-      <div className="flex md:flex-col items-center gap-4">
+      <div className="flex md:flex-col items-center gap-2 md:gap-4 ml-1 md:ml-0">
         {/* Dark Mode Toggle - Grouped with Profile */}
         <button 
           onClick={toggleDark}
-          className="w-12 h-12 md:w-14 md:h-14 rounded-2xl md:rounded-3xl bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-yellow-400 transition-all flex items-center justify-center shadow-xl group"
+          className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-3xl bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-yellow-400 transition-all flex items-center justify-center shadow-xl group cursor-pointer"
           title={isDark ? "Day Mode" : "Night Mode"}
         >
-          {isDark ? <Sun size={20} className="group-hover:rotate-45 transition-transform md:size-24" /> : <Moon size={20} className="group-hover:-rotate-12 transition-transform md:size-24" />}
+          {isDark ? <Sun size={18} className="group-hover:rotate-45 transition-transform md:size-6" /> : <Moon size={18} className="group-hover:-rotate-12 transition-transform md:size-6" />}
         </button>
 
         {!currentUser ? (
            <button 
              onClick={signInWithGoogle} 
-             className="flex flex-col items-center gap-1 group"
+             className="flex flex-col items-center gap-1 group cursor-pointer"
              title="تسجيل الدخول"
            >
-             <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl md:rounded-3xl bg-white text-slate-950 flex items-center justify-center shadow-neon hover:scale-110 transition-all border-4 border-emerald-500/20">
-               <UserIcon size={20} className="md:size-24" />
+             <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-3xl bg-white text-slate-950 flex items-center justify-center shadow-neon hover:scale-110 transition-all border-2 md:border-4 border-emerald-500/20">
+               <UserIcon size={18} className="md:size-6" />
              </div>
-             <span className="text-[9px] font-black uppercase text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity">Login</span>
+             <span className="text-[9px] font-black uppercase text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity hidden md:inline">Login</span>
            </button>
         ) : (
           <button 
             onClick={() => auth.signOut()} 
-            className="flex flex-col items-center gap-1 group"
+            className="flex flex-col items-center gap-1 group cursor-pointer"
             title="خروج"
           >
-            <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl md:rounded-3xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center shadow-lg hover:bg-red-500 hover:text-white transition-all">
-              <LogOut size={20} className="md:size-24" />
+            <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-3xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center shadow-lg hover:bg-red-500 hover:text-white transition-all">
+              <LogOut size={18} className="md:size-6" />
             </div>
-            <span className="text-[9px] font-black uppercase text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">Exit</span>
+            <span className="text-[9px] font-black uppercase text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hidden md:inline">Exit</span>
           </button>
         )}
       </div>
@@ -1871,31 +1871,36 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: a
       )}
       
       <div className="p-10 text-right flex-1 flex flex-col relative justify-between">
-        {isAdmin && (
-          <div className="absolute top-6 left-6 flex gap-2 z-20">
-            <button 
-              onClick={(e) => { e.stopPropagation(); onEdit?.(article); }}
-              className="p-3 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:bg-emerald-500 hover:text-white transition-all shadow-xl"
-              title="تعديل"
-            >
-              <Settings size={16} />
-            </button>
-            <button 
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="p-3 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:bg-red-500 hover:text-white transition-all shadow-xl disabled:opacity-50"
-              title="حذف"
-            >
-              {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-            </button>
-          </div>
-        )}
-        
         <div>
           {/* Card translation bar */}
-          <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-            <span className="text-[9px] text-white/30 uppercase tracking-wider font-mono">🌍 Translation / الترجمة المقالية</span>
-            <div className="flex gap-1.5">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 border-b border-white/5 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[9px] text-white/30 uppercase tracking-wider font-mono">🌍 Translation / الترجمة المقالية</span>
+              {isAdmin && (
+                <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-white/10 shadow-inner">
+                  <span className="text-[8px] uppercase tracking-wider font-mono text-emerald-500/80 font-bold">Admin:</span>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onEdit?.(article); }}
+                    className="p-1 px-2 rounded-md bg-[#00f3ff]/10 border border-[#00f3ff]/30 text-[#00f3ff] hover:bg-[#00f3ff] hover:text-slate-950 transition-all text-[9.5px] font-bold flex items-center gap-1"
+                    title="تعديل"
+                  >
+                    <Settings size={10} />
+                    <span>تعديل</span>
+                  </button>
+                  <button 
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="p-1 px-2 rounded-md bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[9.5px] font-bold flex items-center gap-1"
+                    title="حذف"
+                  >
+                    {isDeleting ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                    <span>حذف</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex gap-1">
               {[
                 { key: 'ar', label: 'العربية' },
                 { key: 'en', label: 'EN' },
@@ -1906,7 +1911,7 @@ const ArticleCard = ({ article, currentUser, onEdit, onShowToast }: { article: a
                   key={langObj.key}
                   onClick={() => setCardLang(langObj.key as any)}
                   className={cn(
-                    "text-[9px] font-extrabold px-2.5 py-1 rounded-lg border transition-all",
+                    "text-[9px] font-extrabold px-2 py-1 rounded-lg border transition-all",
                     cardLang === langObj.key 
                       ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm" 
                       : "text-white/40 hover:text-white bg-slate-950 border-white/5"
