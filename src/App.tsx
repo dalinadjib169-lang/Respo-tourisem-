@@ -39,7 +39,8 @@ import {
   Minimize2,
   ZoomIn,
   ZoomOut,
-  Camera
+  Camera,
+  Check
 } from 'lucide-react';
 import { 
   auth, 
@@ -313,28 +314,6 @@ const BackgroundSlider = () => {
            <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 0%, transparent 80%)' }} />
         </motion.div>
       </AnimatePresence>
-    </div>
-  );
-};
-
-const ThemeSwitcher = () => {
-  const { theme, setTheme } = useContext(ThemeContext);
-
-  return (
-    <div className="fixed bottom-8 left-8 z-50 flex gap-2">
-      {(Object.keys(THEMES) as Theme[]).map((t) => (
-        <button
-          key={t}
-          onClick={() => setTheme(t)}
-          className={cn(
-            "w-12 h-12 rounded-full border-2 transition-all flex items-center justify-center text-[10px] font-bold text-white backdrop-blur-md overflow-hidden",
-            theme === t ? "border-white scale-110 shadow-lg" : "border-white/30 scale-100 hover:border-white/60"
-          )}
-        >
-           <img src={THEMES[t].url} className="absolute inset-0 w-full h-full object-cover opacity-60" />
-           <span className="relative z-10 drop-shadow-md">{THEMES[t].label}</span>
-        </button>
-      ))}
     </div>
   );
 };
@@ -3683,49 +3662,119 @@ const Dashboard = ({ currentUser, editingArticle, onFinishEdit, onEditArticle, o
 
 // Academic Reviews Section Placeholder
 
+const THEME_LABELS: Record<Theme, Record<string, string>> = {
+  sea: { ar: 'البحر الهادئ', en: 'Calm Sea', fr: 'Mer Calme' },
+  desert: { ar: 'الصحراء الكبرى', en: 'Sahara Desert', fr: 'Grand Désert' },
+  snow: { ar: 'الثلوج البيضاء', en: 'White Snow', fr: 'Neige Blanche' },
+  forest: { ar: 'الغابات الخضراء', en: 'Green Forest', fr: 'Forêt Verte' },
+  space: { ar: 'الفضاء الكوني', en: 'Cosmic Space', fr: 'Espace Cosmique' },
+  algeria: { ar: 'العلم الجزائري', en: 'Algerian Flag', fr: 'Drapeau Algérien' },
+  hoggar: { ar: 'هقار وطاسيلي', en: 'Hoggar & Tassili', fr: 'Hoggar & Tassili' },
+  makam: { ar: 'مقام الشهيد', en: 'Martyrs Memorial', fr: 'Mémorial du Martyr' }
+};
+
+const SETTING_TITLES = {
+  ar: { lang: "لغة الموقع", bg: "خلفية الموقع" },
+  en: { lang: "Website Language", bg: "Website Wallpaper" },
+  fr: { lang: "Langue du site", bg: "Arrière-plan du site" }
+};
+
 const FloatingSettings = () => {
-  const { lang, setLang, isDark, toggleDark } = useContext(ThemeContext);
+  const { theme, setTheme, lang, setLang } = useContext(ThemeContext);
   const [isOpen, setIsOpen] = useState(false);
   const { i18n } = useTranslation();
+
+  const titles = SETTING_TITLES[lang as 'ar' | 'en' | 'fr'] || SETTING_TITLES['ar'];
 
   return (
     <div className="fixed top-6 left-6 z-[100] flex flex-col items-start gap-3">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="w-12 h-12 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-all"
+        className="w-12 h-12 rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white flex items-center justify-center shadow-2xl hover:scale-110 transition-all cursor-pointer relative"
+        title={lang === 'ar' ? 'الإعدادات والخلفية' : 'Settings & Wallpaper'}
       >
         <Settings size={20} className={cn("transition-transform duration-500", isOpen ? "rotate-90" : "rotate-0")} />
+        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-slate-900 animate-pulse" />
       </button>
 
       <AnimatePresence>
         {isOpen && (
           <motion.div 
-            initial={{ opacity: 0, x: -20, scale: 0.9 }}
+            initial={{ opacity: 0, x: -25, scale: 0.9 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -20, scale: 0.9 }}
-            className="bg-slate-900/90 backdrop-blur-2xl border border-white/10 p-2 rounded-3xl shadow-2xl flex flex-col gap-2 min-w-[120px]"
+            exit={{ opacity: 0, x: -25, scale: 0.9 }}
+            className="bg-slate-900/95 backdrop-blur-3xl border border-white/10 p-4 rounded-3xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)] flex flex-col gap-4 w-72 sm:w-80"
           >
-             <div className="p-2 border-b border-white/5 mb-1">
-                <p className="text-[10px] font-black text-white/30 uppercase tracking-widest text-center">Language</p>
+             {/* Section 1: Language */}
+             <div className="flex flex-col gap-2">
+                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest text-start font-arabic">
+                  {titles.lang}
+                </p>
+                <div className="flex gap-1.5 p-1 bg-black/40 rounded-xl border border-white/5">
+                  {['ar', 'en', 'fr'].map(l => (
+                    <button 
+                      key={l}
+                      onClick={() => { 
+                        setLang(l); 
+                        i18n.changeLanguage(l);
+                      }}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-lg text-[10.5px] font-extrabold uppercase transition-all text-center cursor-pointer",
+                        lang === l ? "bg-emerald-500 text-white shadow" : "text-white/45 hover:text-white"
+                      )}
+                    >
+                      {l === 'ar' ? 'العربية' : l.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
              </div>
-             <div className="flex flex-col gap-1">
-                {['ar', 'en', 'fr'].map(l => (
-                  <button 
-                    key={l}
-                    onClick={() => { 
-                      setLang(l); 
-                      i18n.changeLanguage(l);
-                      setIsOpen(false); 
-                    }}
-                    className={cn(
-                      "px-4 py-2 rounded-xl text-xs font-bold uppercase transition-all flex items-center justify-between",
-                      lang === l ? "bg-emerald-500 text-white" : "text-white/40 hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <span>{l === 'ar' ? 'العربية' : l === 'en' ? 'English' : 'Français'}</span>
-                    <span className="text-[10px] opacity-50">{l.toUpperCase()}</span>
-                  </button>
-                ))}
+
+             {/* Divider */}
+             <div className="h-px bg-white/5" />
+
+             {/* Section 2: Backgrounds */}
+             <div className="flex flex-col gap-2">
+                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest text-start font-arabic">
+                  {titles.bg}
+                </p>
+                
+                <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1 select-none scrollbar-thin scrollbar-thumb-white/15">
+                  {(Object.keys(THEMES) as Theme[]).map((t) => {
+                    const selected = theme === t;
+                    const labels = THEME_LABELS[t] || { ar: t };
+                    const label = labels[lang as 'ar' | 'en' | 'fr'] || labels['ar'];
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => setTheme(t)}
+                        className={cn(
+                          "relative h-14 rounded-xl overflow-hidden border transition-all flex items-center justify-center group active:scale-95 cursor-pointer",
+                          selected 
+                            ? "border-emerald-500 shadow-lg scale-[1.03] ring-2 ring-emerald-500/20" 
+                            : "border-white/10 hover:border-white/30"
+                        )}
+                      >
+                        <img 
+                          src={THEMES[t].url} 
+                          alt={label} 
+                          className={cn(
+                            "absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110",
+                            selected ? "brightness-[0.4] contrast-125" : "brightness-[0.3] contrast-100 group-hover:brightness-[0.4]"
+                          )}
+                        />
+                        {/* Selected overlay border or badge */}
+                        {selected && (
+                          <div className="absolute top-1 right-1 bg-emerald-500 text-white p-0.5 rounded-full z-20 shadow-sm">
+                            <Check size={8} strokeWidth={4} />
+                          </div>
+                        )}
+                        <span className="relative z-10 text-[10.5px] font-bold text-white drop-shadow-md text-center px-1 font-arabic">
+                          {label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
              </div>
           </motion.div>
         )}
@@ -4176,7 +4225,6 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
         </main>
-        <ThemeSwitcher />
 
         <AnimatePresence>
           {toast && (

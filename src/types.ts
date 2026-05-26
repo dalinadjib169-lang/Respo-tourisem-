@@ -122,7 +122,7 @@ export interface Message {
   replyContent?: string;
 }
 
-export type Theme = 'sea' | 'desert' | 'snow' | 'forest';
+export type Theme = 'sea' | 'desert' | 'snow' | 'forest' | 'space' | 'algeria' | 'hoggar' | 'makam';
 
 export const THEMES: Record<Theme, { url: string; label: string; color: string }> = {
   sea: {
@@ -144,5 +144,25 @@ export const THEMES: Record<Theme, { url: string; label: string; color: string }
     url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=2000',
     label: 'الغابة',
     color: 'bg-green-500/20'
+  },
+  space: {
+    url: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&q=80&w=2000',
+    label: 'الفضاء',
+    color: 'bg-purple-500/20'
+  },
+  algeria: {
+    url: '/src/assets/images/algeria_flag_bg_1779741581415.png',
+    label: 'العلم الجزائري',
+    color: 'bg-emerald-600/20'
+  },
+  hoggar: {
+    url: '/src/assets/images/hoggar_tassili_bg_1779741619469.png',
+    label: 'هقار وطاسيلي',
+    color: 'bg-amber-600/20'
+  },
+  makam: {
+    url: '/src/assets/images/makam_chahid_bg_1779741600810.png',
+    label: 'مقام الشهيد',
+    color: 'bg-teal-500/20'
   }
 };
