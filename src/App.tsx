@@ -66,6 +66,7 @@ import {
 import { uploadToCloudinary } from './lib/cloudinary';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
 import { THEMES, Theme, Article, Work, Message, Profile } from './types';
+import hijabiProfileAvatar from './assets/images/hijabi_profile_avatar_1779539854837.png';
 import { DR_YAI_PUBLICATIONS, type Publication } from './data/publications';
 import { fullPapers } from './data/fullPapers';
 import { useTranslation } from 'react-i18next';
@@ -3804,7 +3805,14 @@ const FloatingAdminButton = ({ currentUser, onNavigate, activeTab }: { currentUs
 };
 
 export default function App() {
-  const [theme, setTheme] = useState<Theme>('sea');
+  const [theme, setThemeState] = useState<Theme>('sea');
+  const [autoRotate, setAutoRotate] = useState(true);
+  
+  const setTheme = (newTheme: Theme) => {
+    setThemeState(newTheme);
+    setAutoRotate(false); 
+  };
+
   const [lang, setLang] = useState('ar');
   const [isDark, setIsDark] = useState(true);
   const [activeTab, setActiveTab] = useState('home');
@@ -3824,26 +3832,27 @@ export default function App() {
       if (snap.exists() && snap.data().avatarUrl) {
         setProfileAvatarUrl(snap.data().avatarUrl);
       } else {
-        setProfileAvatarUrl('/src/assets/images/hijabi_profile_avatar_1779539854837.png');
+        setProfileAvatarUrl(hijabiProfileAvatar);
       }
     }, (err) => {
       console.warn("Could not register settings onSnapshot:", err);
-      setProfileAvatarUrl('/src/assets/images/hijabi_profile_avatar_1779539854837.png');
+      setProfileAvatarUrl(hijabiProfileAvatar);
     });
     return () => unSubProfile();
   }, []);
 
   // Auto-rotate scenic natural backgrounds every 20 seconds
   useEffect(() => {
+    if (!autoRotate) return;
     const themesList: Theme[] = ['sea', 'desert', 'snow', 'forest'];
     const interval = setInterval(() => {
-      setTheme((prev) => {
+      setThemeState((prev) => {
         const nextIndex = (themesList.indexOf(prev) + 1) % themesList.length;
         return themesList[nextIndex];
       });
     }, 20000);
     return () => clearInterval(interval);
-  }, []);
+  }, [autoRotate]);
 
   const handleNavigate = (tab: string) => {
     if (tab === 'contact') {
@@ -4027,7 +4036,7 @@ export default function App() {
                         <div className="absolute inset-0 rounded-full neon-border shadow-[0_0_30px_rgba(0,243,255,0.3)] animate-pulse" />
                         <div className="absolute inset-2 rounded-full overflow-hidden border-2 border-white/20 bg-slate-800 group">
                            <img 
-                             src={profileAvatarUrl || '/src/assets/images/hijabi_profile_avatar_1779539854837.png'} 
+                             src={profileAvatarUrl || hijabiProfileAvatar} 
                              alt="Dr Zaara" 
                              className="w-full h-full object-cover transition-all duration-700 cursor-pointer animate-fade-in"
                              referrerPolicy="no-referrer"

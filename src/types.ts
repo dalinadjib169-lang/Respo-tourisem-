@@ -1,4 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
+import algeriaBg from './assets/images/algeria_flag_bg_1779741581415.png';
+import hoggarBg from './assets/images/hoggar_tassili_bg_1779741619469.png';
+import makamBg from './assets/images/makam_chahid_bg_1779741600810.png';
 
 export interface Profile {
   name: string;
@@ -151,17 +154,17 @@ export const THEMES: Record<Theme, { url: string; label: string; color: string }
     color: 'bg-purple-500/20'
   },
   algeria: {
-    url: '/src/assets/images/algeria_flag_bg_1779741581415.png',
+    url: algeriaBg,
     label: 'العلم الجزائري',
     color: 'bg-emerald-600/20'
   },
   hoggar: {
-    url: '/src/assets/images/hoggar_tassili_bg_1779741619469.png',
+    url: hoggarBg,
     label: 'هقار وطاسيلي',
     color: 'bg-amber-600/20'
   },
   makam: {
-    url: '/src/assets/images/makam_chahid_bg_1779741600810.png',
+    url: makamBg,
     label: 'مقام الشهيد',
     color: 'bg-teal-500/20'
   }
